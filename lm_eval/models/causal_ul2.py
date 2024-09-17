@@ -198,11 +198,11 @@ class CausalUl2(LM):
                 break
 
         # Get the logprops
-        logprobs = self.net(all_ids)
+        logprobs = F.softmax(self.net(all_ids), dim=-1).log()
         
         # Get the output text
         output_text = "".join(output_str)
-        return output_text, logprobs, logprobs.squeeze(0)[:, input_len:]
+        return output_text, logprobs, logprobs.squeeze()[input_len:]
 
     def loglikelihood(
             self, requests: list[Instance], disable_tqdm: bool = False
@@ -214,7 +214,8 @@ class CausalUl2(LM):
             target = request.args[1]
             target_ids = self.encoder.encode_ordinary(target)
             text, _, logprobs = self.generate(query, max_gen_tokens=len(target_ids))
-            ll = logprobs[:, :-1].sum(-1).item()
+            reduced_logprobs = [logprobs[i, t].item() for i, t in enumerate(target_ids)]
+            ll = sum(reduced_logprobs)
             is_greedy = text == target
             results.append((ll, is_greedy))
 
@@ -231,7 +232,8 @@ class CausalUl2(LM):
             target = request.args[1]
             target_ids = self.encoder.encode_ordinary(target)
             _, full_logprobs, _ = self.generate(query, max_gen_tokens=len(target_ids))
-            ll = full_logprobs[:, :-1].sum(-1).item()
+            reduced_logprobs = [full_logprobs[i, t] for i, t in enumerate(target_ids)]
+            ll = sum(reduced_logprobs)
             lls.append(ll)
 
         return lls
