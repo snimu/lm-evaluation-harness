@@ -16,12 +16,15 @@ from lm_eval.api.registry import register_model
 from lm_eval.api.instance import Instance
 
 
+max_seq_len = 4096
+
+
 with torch.no_grad():
     # Create the base arrays for the learnable linear positional bias. This helps save some memory consumption & processing time
-    bias_range                    = torch.arange(-1023, 1).to("cuda", dtype=torch.bfloat16)
+    bias_range                    = torch.arange(-max_seq_len+1, 1).to("cuda", dtype=torch.bfloat16)
     position_bias_base            = bias_range.unsqueeze(0) - bias_range.unsqueeze(1)
     negative_infinity_matrix_base = torch.empty_like(position_bias_base).fill_(-float("inf"))
-    causal_mask = torch.tril(torch.ones((1024, 1024), device="cuda", dtype=torch.bool))
+    causal_mask = torch.tril(torch.ones((max_seq_len, max_seq_len), device="cuda", dtype=torch.bool))
 
 
 class LatentAttentionBlock(nn.Module):
