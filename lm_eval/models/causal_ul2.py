@@ -214,7 +214,7 @@ class CausalUl2(LM):
             target = request.args[1]
             target_ids = self.encoder.encode_ordinary(target)
             text, _, logprobs = self.generate(query, max_gen_tokens=len(target_ids))
-            ll = sum(logprobs.tolist()[:-1])
+            ll = logprobs[:, :-1].sum(-1).tolist()
             is_greedy = text == target
             results.append((ll, is_greedy))
 
@@ -231,7 +231,7 @@ class CausalUl2(LM):
             target = request.args[1]
             target_ids = self.encoder.encode_ordinary(target)
             _, full_logprobs, _ = self.generate(query, max_gen_tokens=len(target_ids))
-            ll = sum(full_logprobs.tolist()[:-1])
+            ll = full_logprobs[:, :-1].sum(-1).tolist()
             lls.append(ll)
 
         return lls
