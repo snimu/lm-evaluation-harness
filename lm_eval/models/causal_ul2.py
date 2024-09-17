@@ -177,6 +177,7 @@ class CausalUl2(LM):
 
         self.encoder = tiktoken.get_encoding("gpt2")
 
+    @torch.no_grad()
     def generate(
             self, query: str, max_gen_tokens: int = 128, until: list[str] | None = None
     ) -> tuple[str, torch.Tensor, torch.Tensor]:
