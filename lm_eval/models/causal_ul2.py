@@ -138,7 +138,7 @@ def make_net(settings: dict[str, Any]):
 def download_model(pretrained: str, cache_dir: str = ".") -> str:
     hf_hub_download(repo_id=pretrained, filename="model.safetensors", cache_dir=cache_dir)
     # Find model.safetensors in cache_dir (is in some subfolder)
-    model_path = Path(cache_dir) / f"models--snimu--{pretrained}"
+    model_path = Path(cache_dir) / f"models--snimu--{pretrained.split('/')[1]}"
     model_path = list(model_path.glob("**/model.safetensors"))
     assert len(model_path) == 1, f"Expected exactly one model.safetensors file in cache_dir, got {model_path}"
     model_path = model_path[0]
