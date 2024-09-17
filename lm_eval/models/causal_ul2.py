@@ -26,13 +26,13 @@ with torch.no_grad():
 
 class LatentAttentionBlock(nn.Module):
     """ Efficient fused latent-space attention block. Linear keys and queries, nonlinear values."""
-    def __init__(self, num_dim, linear_value: bool, num_heads: int, width: int, depth: int):
+    def __init__(self, width: int,  depth: int, linear_value: bool, num_heads: int):
         super().__init__()
         # Layer dim parameters. Play around with these, there's likely some undiscovered stuff still!
-        self.dim        = num_dim
+        self.dim        = width
         self.qk_dim     = self.dim//8
-        self.v_dim      = num_dim
-        self.expand_dim = num_dim * 2
+        self.v_dim      = width
+        self.expand_dim = width * 2
         self.linear_value = linear_value 
         self.num_heads = num_heads
 
@@ -111,7 +111,9 @@ class SpeedyLangNet(nn.Module):
 
 def make_attn(settings: dict[str, Any]):
     # You can parametrically change anything you want about the attn blocks here
-    return LatentAttentionBlock(settings['width'], settings['linear_value'], settings['num_heads'])
+    return LatentAttentionBlock(
+        settings['width'], settings['depth'], settings['linear_value'], settings['num_heads']
+    )
 
 
 def make_net(settings: dict[str, Any]):
