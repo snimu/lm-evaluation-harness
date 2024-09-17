@@ -182,7 +182,7 @@ class CausalUl2(LM):
     ) -> tuple[str, torch.Tensor, torch.Tensor]:
         # Encode the input tokens
         input_ids = self.encoder.encode_ordinary(query)
-        input_ids = torch.tensor(input_ids, device="cuda", dtype=torch.bfloat16).unsqueeze(0)
+        input_ids = torch.tensor(input_ids, device="cuda", dtype=torch.int).unsqueeze(0)
         input_len = input_ids.shape[1]
         
         # Generate the output tokens
@@ -192,7 +192,7 @@ class CausalUl2(LM):
             output_id = self.net(input_ids)[:, -1].argmax(-1).item()
             char = self.encoder.decode([output_id])
             output_str.append(char)
-            all_ids = torch.cat([all_ids, torch.tensor([output_id], device="cuda", dtype=torch.bfloat16).unsqueeze(0)], dim=1)
+            all_ids = torch.cat([all_ids, torch.tensor([output_id], device="cuda", dtype=torch.int).unsqueeze(0)], dim=1)
             if until and char in until:
                 break
 
