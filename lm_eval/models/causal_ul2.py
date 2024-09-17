@@ -1,5 +1,6 @@
 
 from typing import Any, Literal
+from pathlib import Path
 
 from tqdm import tqdm
 import torch
@@ -8,6 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import einops
 import tiktoken
+from huggingface_hub import hf_hub_download
 
 from lm_eval.api.model import LM
 from lm_eval.api.registry import register_model
@@ -131,6 +133,16 @@ def make_net(settings: dict[str, Any]):
     return net
 
 
+def download_model(pretrained: str, cache_dir: str = ".") -> str:
+    hf_hub_download(pretrained, cache_dir=cache_dir)
+    # Find model.safetensors in cache_dir (is in some subfolder)
+    model_path = Path(cache_dir) / f"models--snimu--{pretrained}"
+    model_path = list(model_path.glob("**/model.safetensors"))
+    assert len(model_path) == 1, "Expected exactly one model.safetensors file in cache_dir"
+    model_path = model_path[0]
+    return str(model_path)
+
+
 @register_model("causal-ul2")
 class CausalUl2(LM):
     def __init__(
@@ -158,6 +170,8 @@ class CausalUl2(LM):
             'linear_value': False,
             'num_heads': num_heads,
         })
+        self.model_path = download_model(pretrained)
+        safetensors.torch.load_model(self.net, self.model_path, device="cuda")
 
         self.encoder = tiktoken.get_encoding("gpt2")
 
