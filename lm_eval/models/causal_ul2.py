@@ -199,7 +199,6 @@ def generate(
     return output_text, logprobs, logprobs.squeeze()[input_len:]
 
 
-@register_model("causal-ul2")
 class CausalUl2(LM):
     def __init__(
             self,
@@ -260,6 +259,12 @@ class CausalUl2(LM):
             continuations.append(text)
 
         return continuations
+    
+
+try:
+    register_model("causal-ul2")(CausalUl2)
+except AssertionError:
+    pass
 
 
 def _test_model_loading():
