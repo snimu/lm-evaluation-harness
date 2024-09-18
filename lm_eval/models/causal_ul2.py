@@ -138,6 +138,29 @@ def make_net(settings: dict[str, Any]):
     return net
 
 
+def make_net_from_name(name: str) -> SpeedyLangNet:
+    super().__init__()
+    if "46M" in name:
+        depth, width =  8, 384
+    elif "240M" in name:
+        depth, width = 21, 1024
+    elif "773M" in name:
+        depth, width = 35, 1664
+    elif "1300M" in name:
+        depth, width = 43, 2048
+    else:
+        raise ValueError(f"Unknown pretrained model {name}")
+    
+    num_heads = int(name.split("-")[-2].split("head")[0])
+    
+    return make_net({
+        'depth': depth,
+        'width': width,
+        'linear_value': False,
+        'num_heads': num_heads,
+    })
+
+
 def download_model(pretrained: str, cache_dir: str = ".") -> str:
     hf_hub_download(repo_id=pretrained, filename="model.safetensors", cache_dir=cache_dir)
     # Find model.safetensors in cache_dir (is in some subfolder)
@@ -148,6 +171,34 @@ def download_model(pretrained: str, cache_dir: str = ".") -> str:
     return str(model_path)
 
 
+@torch.no_grad()
+def generate(
+        net, encoder, query: str, max_gen_tokens: int = 128, until: list[str] | None = None
+) -> tuple[str, torch.Tensor, torch.Tensor]:
+    # Encode the input tokens
+    input_ids = encoder.encode_ordinary(query)
+    input_ids = torch.tensor(input_ids, device="cuda", dtype=torch.int).unsqueeze(0)
+    input_len = input_ids.shape[1]
+    
+    # Generate the output tokens
+    output_str = []
+    all_ids = input_ids
+    for _ in range(max_gen_tokens):
+        output_id = net(input_ids)[:, -1].argmax(-1).item()
+        char = encoder.decode([output_id])
+        output_str.append(char)
+        all_ids = torch.cat([all_ids, torch.tensor([output_id], device="cuda", dtype=torch.int).unsqueeze(0)], dim=1)
+        if until and char in until:
+            break
+
+    # Get the logprops
+    logprobs = F.softmax(net(all_ids), dim=-1).log()
+    
+    # Get the output text
+    output_text = "".join(output_str)
+    return output_text, logprobs, logprobs.squeeze()[input_len:]
+
+
 @register_model("causal-ul2")
 class CausalUl2(LM):
     def __init__(
@@ -155,57 +206,11 @@ class CausalUl2(LM):
             pretrained: str,
             **kwargs,
     ) -> None:
-        super().__init__()
-        if "46M" in pretrained:
-            depth, width =  8, 384
-        elif "240M" in pretrained:
-            depth, width = 21, 1024
-        elif "773M" in pretrained:
-            depth, width = 35, 1664
-        elif "1300M" in pretrained:
-            depth, width = 43, 2048
-        else:
-            raise ValueError(f"Unknown pretrained model {pretrained}")
-        
-        num_heads = int(pretrained.split("-")[-2].split("head")[0])
-        
-        self.net = make_net({
-            'depth': depth,
-            'width': width,
-            'linear_value': False,
-            'num_heads': num_heads,
-        })
+        self.net = make_net_from_name(pretrained)
         self.model_path = download_model(pretrained)
         safetensors.torch.load_model(self.net, self.model_path, device="cuda")
 
         self.encoder = tiktoken.get_encoding("gpt2")
-
-    @torch.no_grad()
-    def generate(
-            self, query: str, max_gen_tokens: int = 128, until: list[str] | None = None
-    ) -> tuple[str, torch.Tensor, torch.Tensor]:
-        # Encode the input tokens
-        input_ids = self.encoder.encode_ordinary(query)
-        input_ids = torch.tensor(input_ids, device="cuda", dtype=torch.int).unsqueeze(0)
-        input_len = input_ids.shape[1]
-        
-        # Generate the output tokens
-        output_str = []
-        all_ids = input_ids
-        for _ in range(max_gen_tokens):
-            output_id = self.net(input_ids)[:, -1].argmax(-1).item()
-            char = self.encoder.decode([output_id])
-            output_str.append(char)
-            all_ids = torch.cat([all_ids, torch.tensor([output_id], device="cuda", dtype=torch.int).unsqueeze(0)], dim=1)
-            if until and char in until:
-                break
-
-        # Get the logprops
-        logprobs = F.softmax(self.net(all_ids), dim=-1).log()
-        
-        # Get the output text
-        output_text = "".join(output_str)
-        return output_text, logprobs, logprobs.squeeze()[input_len:]
 
     def loglikelihood(
             self, requests: list[Instance], disable_tqdm: bool = False
@@ -216,7 +221,7 @@ class CausalUl2(LM):
             query = request.args[0]
             target = request.args[1]
             target_ids = self.encoder.encode_ordinary(target)
-            text, _, logprobs = self.generate(query, max_gen_tokens=len(target_ids))
+            text, _, logprobs = generate(self.net, self.encoder, query, max_gen_tokens=len(target_ids))
             reduced_logprobs = [logprobs[i, t].item() for i, t in enumerate(target_ids)]
             ll = sum(reduced_logprobs)
             is_greedy = text == target
@@ -234,7 +239,7 @@ class CausalUl2(LM):
             query = request.args[0]
             target = request.args[1]
             target_ids = self.encoder.encode_ordinary(target)
-            _, full_logprobs, _ = self.generate(query, max_gen_tokens=len(target_ids))
+            _, full_logprobs, _ = generate(self.net, self.encoder, query, max_gen_tokens=len(target_ids))
             reduced_logprobs = [full_logprobs[i, t] for i, t in enumerate(target_ids)]
             ll = sum(reduced_logprobs)
             lls.append(ll)
@@ -251,7 +256,46 @@ class CausalUl2(LM):
             until = request.args[1].get("until", ["</s>"])
             max_gen_tokens = request.args[1].get("max_gen_tokens", 128)
 
-            text, _, _ = self.generate(query, max_gen_tokens, until)
+            text, _, _ = generate(self.net, self.encoder, query, max_gen_tokens, until)
             continuations.append(text)
 
         return continuations
+
+
+def _test_model_loading():
+    """Test if the model weights are correctly loaded"""
+    model_name = "snimu/causal-ul2-C-fineweb10BT-240M-16heads-lr100"
+
+    net1 = make_net_from_name(model_name).to("cpu")
+    assert net1.net_dict['depth'] == 21
+    assert net1.net_dict['width'] == 1024
+    assert not net1.net_dict['linear_value']
+    assert net1.net_dict['num_heads'] == 16
+
+    net2 = make_net_from_name(model_name).to("cpu")
+    for p1, p2 in zip(net1.parameters(), net2.parameters()):
+        p2.data.copy_(p1.data)
+    assert all([torch.all(p1 == p2) for p1, p2 in zip(net1.parameters(), net2.parameters())])
+
+
+    model_path = download_model(model_name)
+    safetensors.torch.load_model(net2, model_path, device="cpu")
+    assert not all([torch.all(p1 == p2) for p1, p2 in zip(net1.parameters(), net2.parameters())])
+
+    sentences = [
+        "The quick brown fox jumps over the lazy dog.",
+        "The five boxing wizards jump quickly.",
+        "How are you today?",
+        "What is the meaning of life?",
+        "I am a student at the university of California.",
+    ]
+
+    encoder = tiktoken.get_encoding("gpt2")
+    for sentence in sentences:
+        completion1, _, _ = generate(net1, encoder, sentence)
+        completion2, _, _ = generate(net2, encoder, sentence)
+        print(f"\n\n{sentence=}\n{completion1=}\n{completion2=}")
+
+
+if __name__ == "__main__":
+    _test_model_loading()
