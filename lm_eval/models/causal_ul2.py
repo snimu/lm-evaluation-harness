@@ -270,6 +270,7 @@ except AssertionError:
 def _test_model_loading():
     """Test if the model weights are correctly loaded"""
     model_name = "snimu/causal-ul2-C-fineweb10BT-773M-26heads-lr090"
+    model_name3 = "snimu/causal-ul2-R-fineweb10BT-773M-26heads-lr090"
 
     net1 = make_net_from_name(model_name).to("cpu")
     net2 = make_net_from_name(model_name).to("cpu")
@@ -277,10 +278,13 @@ def _test_model_loading():
         p2.data.copy_(p1.data)
     assert all([torch.all(p1 == p2) for p1, p2 in zip(net1.parameters(), net2.parameters())])
 
-
     model_path = download_model(model_name)
     safetensors.torch.load_model(net2, model_path, device="cpu")
     assert not all([torch.all(p1 == p2) for p1, p2 in zip(net1.parameters(), net2.parameters())])
+
+    net3 = make_net_from_name(model_name).to("cpu")
+    model_path = download_model(model_name3)
+    safetensors.torch.load_model(net3, model_path, device="cpu")
 
     sentences = [
         "The quick brown fox jumps over the",
@@ -296,12 +300,14 @@ def _test_model_loading():
 
     net1 = net1.to("cuda")
     net2 = net2.to("cuda")
+    net3 = net3.to("cuda")
 
     encoder = tiktoken.get_encoding("gpt2")
     for sentence in sentences:
         completion1, _, _ = generate(net1, encoder, sentence, max_gen_tokens=24)
         completion2, _, _ = generate(net2, encoder, sentence, max_gen_tokens=24)
-        print(f"\n\n{sentence=}\n{completion1=}\n{completion2=}")
+        completion3, _, _ = generate(net3, encoder, sentence, max_gen_tokens=24)
+        print(f"\n\n{sentence=}\n{completion1=}\n{completion2=}\n{completion3=}")
 
 
 if __name__ == "__main__":
