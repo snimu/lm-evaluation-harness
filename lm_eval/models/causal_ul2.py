@@ -218,7 +218,7 @@ def generate_with_mask(
                 (1, max_gen_tokens-1), 
                 device="cuda", 
                 dtype=torch.int,
-            ).fill(mask)
+            ).fill_(mask),
         ], 
         dim=1,
     )
