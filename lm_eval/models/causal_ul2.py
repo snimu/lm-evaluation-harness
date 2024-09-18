@@ -321,31 +321,26 @@ def _test_model_loading():
 
     sentences = [
         "The quick brown fox jumps over the",
-        "The five boxing wizards ",
-        "How are you ",
+        "The five boxing wizards",
+        "How are you",
         "What is the meaning",
         "I am a student at the university of",
-        "Question: ",
-        "Answer: ",
-        "The method of ",
-        "The most popular ",
+        "Answer:",
+        "The most popular",
     ]
 
-    net_rand = net_rand.to("cuda")
     net_c = net_c.to("cuda")
     net_r = net_r.to("cuda")
 
     encoder = tiktoken.get_encoding("gpt2")
     for sentence in sentences:
-        completion_rand, _, _ = generate(net_rand, encoder, sentence, max_gen_tokens=12)
         completion_c, _, _ = generate(net_c, encoder, sentence, max_gen_tokens=12)
         completion_r, _, _ = generate(net_r, encoder, sentence, max_gen_tokens=12)
-        mask_completion_rand, _, _ = generate_with_mask(net_rand, encoder, sentence, max_gen_tokens=12)
         mask_completion_c, _, _ = generate_with_mask(net_c, encoder, sentence, max_gen_tokens=12)
         mask_completion_r, _, _ = generate_with_mask(net_r, encoder, sentence, max_gen_tokens=12)
         print(
-            f"\n\n{sentence=}\n{completion_rand=}\n{completion_c=}\n"
-            f"{completion_r=}\n{mask_completion_rand=}\n"
+            f"\n\n{sentence=}\n{completion_c=}\n"
+            f"{completion_r=}\n"
             f"{mask_completion_c=}\n{mask_completion_r=}"
         ) 
 
