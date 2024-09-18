@@ -304,6 +304,8 @@ except AssertionError:
 
 
 def _test_model_loading():
+    from rich import print
+    
     """Test if the model weights are correctly loaded"""
     model_name_c = "snimu/causal-ul2-C-fineweb10BT-773M-26heads-lr090"
     model_name_r = "snimu/causal-ul2-R-fineweb10BT-773M-26heads-lr090"

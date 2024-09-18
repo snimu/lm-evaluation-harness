@@ -43,6 +43,7 @@ dependencies = [
     "tiktoken",
     "einops",
     "safetensors",
+    "rich",
 ]
 
 [tool.setuptools.packages.find]
