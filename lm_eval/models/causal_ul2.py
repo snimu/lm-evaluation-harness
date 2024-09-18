@@ -139,7 +139,6 @@ def make_net(settings: dict[str, Any]):
 
 
 def make_net_from_name(name: str) -> SpeedyLangNet:
-    super().__init__()
     if "46M" in name:
         depth, width =  8, 384
     elif "240M" in name:
@@ -205,6 +204,7 @@ class CausalUl2(LM):
             pretrained: str,
             **kwargs,
     ) -> None:
+        super().__init__()
         self.net = make_net_from_name(pretrained)
         self.model_path = download_model(pretrained)
         safetensors.torch.load_model(self.net, self.model_path, device="cuda")
