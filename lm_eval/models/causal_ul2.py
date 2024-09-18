@@ -215,7 +215,7 @@ def generate_with_mask(
         [
             input_ids, 
             torch.empty(
-                (1, max_gen_tokens-1), 
+                (1, max_gen_tokens), 
                 device="cuda", 
                 dtype=torch.int,
             ).fill_(mask),
@@ -224,7 +224,7 @@ def generate_with_mask(
     )
     logits = net(all_ids)
     logprobs = F.log_softmax(logits, dim=-1)
-    outputs = logits[input_len:, :, :50304].argmax(-1)
+    outputs = logits[:, input_len:, :50304].argmax(-1)
     outputs = outputs.squeeze().tolist()
     output_text = encoder.decode(outputs)
     
