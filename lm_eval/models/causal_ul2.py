@@ -305,7 +305,7 @@ except AssertionError:
 
 def _test_model_loading():
     from rich import print
-    
+
     """Test if the model weights are correctly loaded"""
     model_name_c = "snimu/causal-ul2-C-fineweb10BT-773M-26heads-lr090"
     model_name_r = "snimu/causal-ul2-R-fineweb10BT-773M-26heads-lr090"
@@ -328,6 +328,13 @@ def _test_model_loading():
         "The cinnamon quail-thrush (Cinclosoma cinnamomeum) is a species of bird in the family Cinclosomatidae. Endemic to Australia, it is typically found in arid and semi-arid regions of the central part of the continent, spanning southwest Queensland, northwest New South Wales, northeastern South Australia, and the southeast of the Northern Territory. It is most commonly found among dry stony areas, especially",
         'Carcharodontosauridae (carcharodontosaurids; from the Greek carcharodontosauros: "shark-toothed lizards") is a group of carnivorous theropod dinosaurs. In 1931, Ernst Stromer named Carcharodontosauridae as a family, which, in modern paleontology, indicates a clade within Carnosauria. Carcharodontosaurids include some of the largest land predators ever known: Giganotosaurus, Mapusaurus, Carcharodontosaurus, and Tyrannotitan all rivaled Tyrannosaurus in size. Estimates give a maximum weight of',
         "The 2000–01 World Sevens Series was the second edition of the global circuit for men's national rugby sevens teams, organised by the International Rugby Board. The season ran from November 2000 to June 2001 and consisted of nine tournaments (originally 10 were scheduled, but one was cancelled).\n\nThe series was won by New Zealand, who won six of the nine tournaments. Australia won the other three tournaments, and",
+        'Peregian Beach within the Sunshine Coast Region comprises continual residential development along the eastern coastal strip of sandy beaches. The David Low Way passes north to south through this area. Development to the west is constrained by',
+        "Linton was the eldest son of Jabez Linton of Hardrigg Lodge, Dumfriesshire, by Jane, daughter of William Crocket of Grahamshill in the same county. He was born in 1801 at Kirkpatrick Fleming. He was educated at Edinburgh University, and graduated L.R.C.S. in 1826. But he had already utilised four summer vacations as surgeon on a whaler in the arctic regions. He entered the army medical department in 1826, graduated M.D. at Glasgow in 1834, and became staff surgeon of the first class in 1848. After serving in Canada, the Mediterranean, and the West Indies, he was appointed deputy inspector-general of hospitals of the first division of the army in the Crimea, was present in every action up to the battle of Balaclava, and had care of the barrack hospital in Scutari shortly after its establishment in 1854 until the British forces",
+        "Two years later, Mozambique qualified for their third Africa Cup of Nations held in Burkina Faso. They were again placed in group D along with Morocco, Egypt and Zambia. Mozambique lost their first game against eventual tournament winners Egypt 2–0, both goals coming from Hossam Hassan. In their second game they again lost to Morocco 3–0, therefore eliminating them from",
+        "Kirkman intended Freedom Ring to be an example of a superhero who demonstrated inexperience with his superpowers, as he felt that most superheroes quickly adjusting to their powers and having a successful superhero career did not reflect reality. When asked by a fan about the number of visibly gay comic book superheroes, Editor-in-Chief of Marvel Comics, Joe Quesada, also touted"
+        'Portage-du-Fort is named after the portage trail which started here and would lead upstream around a set of falls on the Ottawa River.\n\nHowever, there are several hypotheses to explain the "Fort" portion. Among the most popular is the assumption that a fort was present here on the shore of the Ottawa River to keep provisions at the portage. It has been claimed that a fort called Dufort was flooded in the rapids at this location. However, some researchers argue that the fort in question has never existed and may be a reference to another fort at the mouth of the Coulonge River (after which modern Fort-Coulonge is named). Moreover, the word formerly did not always convey a military connotation and could be more or less synonymous with a village or hamlet, or even a post or warehouse which was fortified.[1]\n\nOne theory suggests that the name goes back to a custom of the Algonquins who would paint their bodies here and it was originally named Portage du Fard (French for "make-up"), which changed into "Fort".[1]\n\nAnother possibility is that Fort (French also for "strong") makes reference to the strength needed to haul the heavy canoes and supplies"',
+        "The Country Club of Birmingham, previously known as Birmingham Country Club, located in Birmingham, Alabama, United States, was founded in 1898. It moved in 1900 from North Birmingham to Lakeview, then again in 1926 to a site in Shades Valley, now within the city of Mountain Brook. The Lakeview club hosted former president Theodore Roosevelt and several Women's Southern Golf Association tournaments.",
+        "Saint Barthélemy was for many years a French commune forming part of Guadeloupe, which is an overseas region and department of France. In 2003 the island voted in favour of secession from Guadeloupe to form a separate overseas collectivity (collectivité d'outre-mer, abbreviated to COM) of France. The collectivity is one of four territories among the Leeward Islands in the northeastern Caribbean that make up the French West Indies, along with Saint Martin, Guadeloupe (200 kilometres (120 mi) southeast) and",
     ]
 
     net_c = net_c.to("cuda")
@@ -335,32 +342,32 @@ def _test_model_loading():
 
     encoder = tiktoken.get_encoding("gpt2")
     for sentence in sentences:
-        completion_c1, _, _ = generate(net_c, encoder, sentence, max_gen_tokens=12)
-        completion_r1, _, _ = generate(net_r, encoder, sentence, max_gen_tokens=12)
-        completion_c2, _, _ = generate(net_c, encoder, sentence, max_gen_tokens=12, choose_nth_best=2)
-        completion_r2, _, _ = generate(net_r, encoder, sentence, max_gen_tokens=12, choose_nth_best=2)
-        completion_c3, _, _ = generate(net_c, encoder, sentence, max_gen_tokens=12, choose_nth_best=3)
-        completion_r3, _, _ = generate(net_r, encoder, sentence, max_gen_tokens=12, choose_nth_best=3)
-        mask_completion_c1, _, _ = generate_with_mask(net_c, encoder, sentence, max_gen_tokens=12)
-        mask_completion_r1, _, _ = generate_with_mask(net_r, encoder, sentence, max_gen_tokens=12)
-        mask_completion_c2, _, _ = generate_with_mask(net_c, encoder, sentence, max_gen_tokens=12, choose_nth_best=2)
-        mask_completion_r2, _, _ = generate_with_mask(net_r, encoder, sentence, max_gen_tokens=12, choose_nth_best=2)
-        mask_completion_c3, _, _ = generate_with_mask(net_c, encoder, sentence, max_gen_tokens=12, choose_nth_best=3)
-        mask_completion_r3, _, _ = generate_with_mask(net_r, encoder, sentence, max_gen_tokens=12, choose_nth_best=3)
+        completion_c1, _, _ = generate(net_c, encoder, sentence, max_gen_tokens=50)
+        completion_r1, _, _ = generate(net_r, encoder, sentence, max_gen_tokens=50)
+        completion_c2, _, _ = generate(net_c, encoder, sentence, max_gen_tokens=50, choose_nth_best=2)
+        completion_r2, _, _ = generate(net_r, encoder, sentence, max_gen_tokens=50, choose_nth_best=2)
+        completion_c3, _, _ = generate(net_c, encoder, sentence, max_gen_tokens=50, choose_nth_best=3)
+        completion_r3, _, _ = generate(net_r, encoder, sentence, max_gen_tokens=50, choose_nth_best=3)
+        # mask_completion_c1, _, _ = generate_with_mask(net_c, encoder, sentence, max_gen_tokens=50)
+        # mask_completion_r1, _, _ = generate_with_mask(net_r, encoder, sentence, max_gen_tokens=50)
+        # mask_completion_c2, _, _ = generate_with_mask(net_c, encoder, sentence, max_gen_tokens=50, choose_nth_best=2)
+        # mask_completion_r2, _, _ = generate_with_mask(net_r, encoder, sentence, max_gen_tokens=50, choose_nth_best=2)
+        # mask_completion_c3, _, _ = generate_with_mask(net_c, encoder, sentence, max_gen_tokens=50, choose_nth_best=3)
+        # mask_completion_r3, _, _ = generate_with_mask(net_r, encoder, sentence, max_gen_tokens=50, choose_nth_best=3)
         print(
-            f"\n\n{sentence=}\n"
+            f"\n\n{sentence=}\n\n"
             f"{completion_c1=}\n"
+            f"{completion_r1=}\n\n"
             f"{completion_c2=}\n"
+            f"{completion_r2=}\n\n"
             f"{completion_c3=}\n"
-            f"{completion_r1=}\n"
-            f"{completion_r2=}\n"
-            f"{completion_r3=}\n"
-            f"{mask_completion_c1=}\n"
-            f"{mask_completion_c2=}\n"
-            f"{mask_completion_c3=}\n"
-            f"{mask_completion_r1=}\n"
-            f"{mask_completion_r2=}\n"
-            f"{mask_completion_r3=}\n"
+            f"{completion_r3=}\n\n"
+            # f"{mask_completion_c1=}\n"
+            # f"{mask_completion_r1=}\n\n"
+            # f"{mask_completion_c2=}\n"
+            # f"{mask_completion_r2=}\n\n"
+            # f"{mask_completion_c3=}\n"
+            # f"{mask_completion_r3=}\n\n"
         ) 
 
 
