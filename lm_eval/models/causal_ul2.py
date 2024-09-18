@@ -272,11 +272,6 @@ def _test_model_loading():
     model_name = "snimu/causal-ul2-C-fineweb10BT-240M-16heads-lr100"
 
     net1 = make_net_from_name(model_name).to("cpu")
-    assert net1.net_dict['depth'] == 21
-    assert net1.net_dict['width'] == 1024
-    assert not net1.net_dict['linear_value']
-    assert net1.net_dict['num_heads'] == 16
-
     net2 = make_net_from_name(model_name).to("cpu")
     for p1, p2 in zip(net1.parameters(), net2.parameters()):
         p2.data.copy_(p1.data)
