@@ -269,7 +269,7 @@ except AssertionError:
 
 def _test_model_loading():
     """Test if the model weights are correctly loaded"""
-    model_name = "snimu/causal-ul2-C-fineweb10BT-240M-16heads-lr100"
+    model_name = "snimu/causal-ul2-C-fineweb10BT-773M-26heads-lr090"
 
     net1 = make_net_from_name(model_name).to("cpu")
     net2 = make_net_from_name(model_name).to("cpu")
