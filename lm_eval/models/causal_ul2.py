@@ -290,6 +290,9 @@ def _test_model_loading():
         "I am a student at the university of California.",
     ]
 
+    net1 = net1.to("cuda")
+    net2 = net2.to("cuda")
+
     encoder = tiktoken.get_encoding("gpt2")
     for sentence in sentences:
         completion1, _, _ = generate(net1, encoder, sentence)
