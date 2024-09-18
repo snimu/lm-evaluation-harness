@@ -183,7 +183,7 @@ def generate(
     output_str = []
     all_ids = input_ids
     for _ in range(max_gen_tokens):
-        output_id = net(input_ids)[:, -1].argmax(-1).item()
+        output_id = net(all_ids)[:, -1].argmax(-1).item()
         char = encoder.decode([output_id])
         output_str.append(char)
         all_ids = torch.cat([all_ids, torch.tensor([output_id], device="cuda", dtype=torch.int).unsqueeze(0)], dim=1)
