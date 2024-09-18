@@ -172,7 +172,8 @@ def download_model(pretrained: str, cache_dir: str = ".") -> str:
 
 @torch.no_grad()
 def generate(
-        net, encoder, query: str, max_gen_tokens: int = 128, until: list[str] | None = None
+        net, encoder, query: str, max_gen_tokens: int = 128, until: list[str] | None = None,
+        choose_nth_best: int = 1,
 ) -> tuple[str, torch.Tensor, torch.Tensor]:
     # Encode the input tokens
     input_ids = encoder.encode_ordinary(query)
@@ -183,7 +184,8 @@ def generate(
     output_str = []
     all_ids = input_ids
     for _ in range(max_gen_tokens):
-        output_id = net(all_ids)[:, -1, :50304].argmax(-1).item()  # ignore last token position, only decode valid token indices ( up to50304)
+        logits: torch.Tensor = net(all_ids)
+        output_id = logits[:, -1, :50304].topk(choose_nth_best, dim=-1).indices[:, -1].item()  # ignore last token position, only decode valid token indices ( up to50304)
         char = encoder.decode([output_id])
         output_str.append(char)
         all_ids = torch.cat([all_ids, torch.tensor([output_id], device="cuda", dtype=torch.int).unsqueeze(0)], dim=1)
@@ -205,6 +207,7 @@ def generate_with_mask(
     query: str, 
     max_gen_tokens: int = 128, 
     mask: int = 50308,
+    choose_nth_best: int = 1,
 ) -> tuple[str, torch.Tensor, torch.Tensor]:
     # Encode the input tokens
     input_ids = encoder.encode_ordinary(query)
@@ -222,9 +225,9 @@ def generate_with_mask(
         ], 
         dim=1,
     )
-    logits = net(all_ids)
+    logits: torch.Tensor = net(all_ids)
     logprobs = F.log_softmax(logits, dim=-1)
-    outputs = logits[:, input_len:, :50304].argmax(-1)
+    outputs = logits[:, input_len:, :50304].topk(choose_nth_best, dim=-1).indices[:, :, -1]
     outputs = outputs.squeeze().tolist()
     output_text = encoder.decode(outputs)
     
@@ -320,8 +323,6 @@ def _test_model_loading():
     safetensors.torch.load_model(net_r, model_path, device="cpu")
 
     sentences = [
-        "The quick brown fox jumps over the",
-        "Answer:",
         "The cinnamon quail-thrush (Cinclosoma cinnamomeum) is a species of bird in the family Cinclosomatidae. Endemic to Australia, it is typically found in arid and semi-arid regions of the central part of the continent, spanning southwest Queensland, northwest New South Wales, northeastern South Australia, and the southeast of the Northern Territory. It is most commonly found among dry stony areas, especially",
         'Carcharodontosauridae (carcharodontosaurids; from the Greek carcharodontosauros: "shark-toothed lizards") is a group of carnivorous theropod dinosaurs. In 1931, Ernst Stromer named Carcharodontosauridae as a family, which, in modern paleontology, indicates a clade within Carnosauria. Carcharodontosaurids include some of the largest land predators ever known: Giganotosaurus, Mapusaurus, Carcharodontosaurus, and Tyrannotitan all rivaled Tyrannosaurus in size. Estimates give a maximum weight of',
         "The 2000–01 World Sevens Series was the second edition of the global circuit for men's national rugby sevens teams, organised by the International Rugby Board. The season ran from November 2000 to June 2001 and consisted of nine tournaments (originally 10 were scheduled, but one was cancelled).\n\nThe series was won by New Zealand, who won six of the nine tournaments. Australia won the other three tournaments, and",
@@ -332,14 +333,32 @@ def _test_model_loading():
 
     encoder = tiktoken.get_encoding("gpt2")
     for sentence in sentences:
-        completion_c, _, _ = generate(net_c, encoder, sentence, max_gen_tokens=12)
-        completion_r, _, _ = generate(net_r, encoder, sentence, max_gen_tokens=12)
-        mask_completion_c, _, _ = generate_with_mask(net_c, encoder, sentence, max_gen_tokens=12)
-        mask_completion_r, _, _ = generate_with_mask(net_r, encoder, sentence, max_gen_tokens=12)
+        completion_c1, _, _ = generate(net_c, encoder, sentence, max_gen_tokens=12)
+        completion_r1, _, _ = generate(net_r, encoder, sentence, max_gen_tokens=12)
+        completion_c2, _, _ = generate(net_c, encoder, sentence, max_gen_tokens=12, choose_nth_best=2)
+        completion_r2, _, _ = generate(net_r, encoder, sentence, max_gen_tokens=12, choose_nth_best=2)
+        completion_c3, _, _ = generate(net_c, encoder, sentence, max_gen_tokens=12, choose_nth_best=3)
+        completion_r3, _, _ = generate(net_r, encoder, sentence, max_gen_tokens=12, choose_nth_best=3)
+        mask_completion_c1, _, _ = generate_with_mask(net_c, encoder, sentence, max_gen_tokens=12)
+        mask_completion_r1, _, _ = generate_with_mask(net_r, encoder, sentence, max_gen_tokens=12)
+        mask_completion_c2, _, _ = generate_with_mask(net_c, encoder, sentence, max_gen_tokens=12, choose_nth_best=2)
+        mask_completion_r2, _, _ = generate_with_mask(net_r, encoder, sentence, max_gen_tokens=12, choose_nth_best=2)
+        mask_completion_c3, _, _ = generate_with_mask(net_c, encoder, sentence, max_gen_tokens=12, choose_nth_best=3)
+        mask_completion_r3, _, _ = generate_with_mask(net_r, encoder, sentence, max_gen_tokens=12, choose_nth_best=3)
         print(
-            f"\n\n{sentence=}\n{completion_c=}\n"
-            f"{completion_r=}\n"
-            f"{mask_completion_c=}\n{mask_completion_r=}"
+            f"\n\n{sentence=}\n"
+            f"{completion_c1=}\n"
+            f"{completion_c2=}\n"
+            f"{completion_c3=}\n"
+            f"{completion_r1=}\n"
+            f"{completion_r2=}\n"
+            f"{completion_r3=}\n"
+            f"{mask_completion_c1=}\n"
+            f"{mask_completion_c2=}\n"
+            f"{mask_completion_c3=}\n"
+            f"{mask_completion_r1=}\n"
+            f"{mask_completion_r2=}\n"
+            f"{mask_completion_r3=}\n"
         ) 
 
 
