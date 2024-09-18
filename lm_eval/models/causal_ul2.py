@@ -198,6 +198,39 @@ def generate(
     return output_text, logprobs, logprobs.squeeze()[input_len:]
 
 
+@torch.no_grad()
+def generate_with_mask(
+    net: SpeedyLangNet, 
+    encoder: tiktoken.Encoding, 
+    query: str, 
+    max_gen_tokens: int = 128, 
+    mask: int = 50308,
+) -> tuple[str, torch.Tensor, torch.Tensor]:
+    # Encode the input tokens
+    input_ids = encoder.encode_ordinary(query)
+    input_ids = torch.tensor(input_ids, device="cuda", dtype=torch.int).unsqueeze(0)
+    input_len = input_ids.shape[1]
+
+    all_ids = torch.cat(
+        [
+            input_ids, 
+            torch.empty(
+                (1, max_gen_tokens-1), 
+                device="cuda", 
+                dtype=torch.int,
+            ).fill(mask)
+        ], 
+        dim=1,
+    )
+    logits = net(all_ids)
+    logprobs = F.log_softmax(logits, dim=-1)
+    outputs = logprobs[input_len:, :, :50304].argmax(-1)
+    outputs = outputs.squeeze().tolist()
+    output_text = encoder.decode(outputs)
+    
+    return output_text, logprobs, logprobs.squeeze()[input_len:]
+
+
 class CausalUl2(LM):
     def __init__(
             self,
@@ -304,10 +337,17 @@ def _test_model_loading():
 
     encoder = tiktoken.get_encoding("gpt2")
     for sentence in sentences:
-        completion_rand, _, _ = generate(net_rand, encoder, sentence, max_gen_tokens=24)
-        completion_c, _, _ = generate(net_c, encoder, sentence, max_gen_tokens=24)
-        completion_r, _, _ = generate(net_r, encoder, sentence, max_gen_tokens=24)
-        print(f"\n\n{sentence=}\n{completion_rand=}\n{completion_c=}\n{completion_r=}")
+        completion_rand, _, _ = generate(net_rand, encoder, sentence, max_gen_tokens=12)
+        completion_c, _, _ = generate(net_c, encoder, sentence, max_gen_tokens=12)
+        completion_r, _, _ = generate(net_r, encoder, sentence, max_gen_tokens=12)
+        mask_completion_rand, _, _ = generate_with_mask(net_rand, encoder, sentence, max_gen_tokens=12)
+        mask_completion_c, _, _ = generate_with_mask(net_c, encoder, sentence, max_gen_tokens=12)
+        mask_completion_r, _, _ = generate_with_mask(net_r, encoder, sentence, max_gen_tokens=12)
+        print(
+            f"\n\n{sentence=}\n{completion_rand=}\n{completion_c=}\n"
+            f"{completion_r=}\n{mask_completion_rand=}\n"
+            f"{mask_completion_c=}\n{mask_completion_r=}"
+        ) 
 
 
 if __name__ == "__main__":
