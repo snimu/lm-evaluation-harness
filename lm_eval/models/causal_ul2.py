@@ -283,11 +283,11 @@ def _test_model_loading():
     assert not all([torch.all(p1 == p2) for p1, p2 in zip(net1.parameters(), net2.parameters())])
 
     sentences = [
-        "The quick brown fox jumps over the lazy dog.",
-        "The five boxing wizards jump quickly.",
-        "How are you today?",
-        "What is the meaning of life?",
-        "I am a student at the university of California.",
+        "The quick brown fox jumps over the",
+        "The five boxing wizards ",
+        "How are you ",
+        "What is the meaning",
+        "I am a student at the university of",
     ]
 
     net1 = net1.to("cuda")
