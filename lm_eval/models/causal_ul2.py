@@ -288,6 +288,10 @@ def _test_model_loading():
         "How are you ",
         "What is the meaning",
         "I am a student at the university of",
+        "Question: ",
+        "Answer: ",
+        "The method of ",
+        "The most popular ",
     ]
 
     net1 = net1.to("cuda")
@@ -295,8 +299,8 @@ def _test_model_loading():
 
     encoder = tiktoken.get_encoding("gpt2")
     for sentence in sentences:
-        completion1, _, _ = generate(net1, encoder, sentence)
-        completion2, _, _ = generate(net2, encoder, sentence)
+        completion1, _, _ = generate(net1, encoder, sentence, max_gen_tokens=24)
+        completion2, _, _ = generate(net2, encoder, sentence, max_gen_tokens=24)
         print(f"\n\n{sentence=}\n{completion1=}\n{completion2=}")
 
 
