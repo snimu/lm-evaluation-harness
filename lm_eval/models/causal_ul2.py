@@ -397,8 +397,8 @@ class CausalUl2(LM):
             **kwargs,
     ) -> None:
         super().__init__()
-        assert size in (1549, 1300, 773, 240)
-        assert mode in ("r", "c")
+        assert size in (1549, 1300, 773, 240), f"size must be one of (1549, 1300, 773, 240), got {size}"
+        assert mode in ("r", "c"), f"mode must be one of ('r', 'c'), got {mode}"
         if size == 773:
             model_name_c = "snimu/causal-ul2-C-fineweb10BT-773M-26heads-lr090"
             model_name_r = "snimu/causal-ul2-R-fineweb10BT-773M-26heads-lr090"
@@ -412,7 +412,7 @@ class CausalUl2(LM):
             model_name_c = "snimu/p1549M_t100B_w1536_d52_h12_b480_s1024_i203450_clip0-15_seed0"
             model_name_r = "snimu/p1549M_t100B_w1536_d52_h12_b480_s1024_i203450_clip0-15_withMask_seed0"
         pretrained = model_name_c if mode == "c" else model_name_r
-        
+
         self.net = make_net_from_name(pretrained)
         self.model_path = download_model(pretrained)
         fix_param_names(pretrained)
