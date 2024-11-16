@@ -1,19 +1,23 @@
 
-from typing import Any, Literal
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Literal
 
-from tqdm import tqdm
-import torch
+import einops
 import safetensors.torch
+import tiktoken
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import einops
-import tiktoken
 from huggingface_hub import hf_hub_download
+from tqdm import tqdm
 
+from lm_eval.api.instance import Instance
 from lm_eval.api.model import LM
 from lm_eval.api.registry import register_model
-from lm_eval.api.instance import Instance
+
+
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 max_seq_len = 4096
@@ -21,10 +25,10 @@ max_seq_len = 4096
 
 with torch.no_grad():
     # Create the base arrays for the learnable linear positional bias. This helps save some memory consumption & processing time
-    bias_range                    = torch.arange(-max_seq_len+1, 1).to("cuda", dtype=torch.bfloat16)
+    bias_range                    = torch.arange(-max_seq_len+1, 1).to(DEVICE, dtype=torch.bfloat16)
     position_bias_base            = bias_range.unsqueeze(0) - bias_range.unsqueeze(1)
     negative_infinity_matrix_base = torch.empty_like(position_bias_base).fill_(-float("inf"))
-    causal_mask = torch.tril(torch.ones((max_seq_len, max_seq_len), device="cuda", dtype=torch.bool))
+    causal_mask = torch.tril(torch.ones((max_seq_len, max_seq_len), device=DEVICE, dtype=torch.bool))
 
 
 class LatentAttentionBlock(nn.Module):
@@ -91,11 +95,6 @@ class LatentAttentionBlock(nn.Module):
         return x
 
 
-#############################################
-#            Network Definition             #
-#############################################
-
-# This may seem like an odd way to define a network, but it's a bit easier to hack into/make quick changes than other methods
 class SpeedyLangNet(nn.Module):
     def __init__(self, network_dict):
         super().__init__()
@@ -110,7 +109,142 @@ class SpeedyLangNet(nn.Module):
         x = self.net_dict['norm'](x)
         x = self.net_dict['outputs'](x)
         return x
-    
+
+
+################################################################################
+# GPT2 MUON #
+################################################################################
+
+class Rotary(torch.nn.Module):
+
+    def __init__(self, dim, base=10000):
+        super().__init__()
+        self.inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float() / dim))
+        self.seq_len_cached = None
+        self.cos_cached = None
+        self.sin_cached = None
+
+    def forward(self, x):
+        seq_len = x.shape[1]
+        if seq_len != self.seq_len_cached:
+            self.seq_len_cached = seq_len
+            t = torch.arange(seq_len, device=x.device).type_as(self.inv_freq)
+            freqs = torch.outer(t, self.inv_freq).to(x.device)
+            self.cos_cached = freqs.cos().bfloat16()
+            self.sin_cached = freqs.sin().bfloat16()
+        return self.cos_cached[None, :, None, :], self.sin_cached[None, :, None, :]
+
+def apply_rotary_emb(x, cos, sin):
+    assert x.ndim == 4 # multihead attention
+    d = x.shape[3]//2
+    x1 = x[..., :d]
+    x2 = x[..., d:]
+    y1 = x1 * cos + x2 * sin
+    y2 = x1 * (-sin) + x2 * cos
+    return torch.cat([y1, y2], 3).type_as(x)
+
+class CausalSelfAttention(nn.Module):
+
+    def __init__(self, config):
+        super().__init__()
+        self.n_head = config.n_head
+        self.n_embd = config.n_embd
+        self.head_dim = self.n_embd // self.n_head
+        assert self.n_embd % self.n_head == 0
+        self.c_q = nn.Linear(self.n_embd, self.n_embd, bias=False)
+        self.c_k = nn.Linear(self.n_embd, self.n_embd, bias=False)
+        self.c_v = nn.Linear(self.n_embd, self.n_embd, bias=False)
+        # output projection
+        self.c_proj = nn.Linear(self.n_embd, self.n_embd, bias=False)
+        self.c_proj.weight.data.zero_() # zero init suggested by @Grad62304977
+        self.rotary = Rotary(self.head_dim)
+
+    def forward(self, x):
+        B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
+        q = self.c_q(x).view(B, T, self.n_head, self.head_dim)
+        k = self.c_k(x).view(B, T, self.n_head, self.head_dim)
+        v = self.c_v(x).view(B, T, self.n_head, self.head_dim)
+        cos, sin = self.rotary(q)
+        q, k = F.rms_norm(q, (q.size(-1),)), F.rms_norm(k, (k.size(-1),)) # QK norm suggested by @Grad62304977
+        q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin)
+        y = F.scaled_dot_product_attention(q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2), is_causal=True)
+        y = y.transpose(1, 2).contiguous().view_as(x) # re-assemble all head outputs side by side
+        y = self.c_proj(y)
+        return y
+
+class MLP(nn.Module):
+
+    def __init__(self, config):
+        super().__init__()
+        self.c_fc    = nn.Linear(config.n_embd, 4 * config.n_embd, bias=False)
+        self.c_proj  = nn.Linear(4 * config.n_embd, config.n_embd, bias=False)
+        self.c_proj.weight.data.zero_() # zero init suggested by @Grad62304977
+
+    def forward(self, x):
+        x = self.c_fc(x)
+        x = F.relu(x).square() # https://arxiv.org/abs/2109.08668v2; ~1-2% better than GELU; suggested by @SKYLINEZ007 and @Grad62304977
+        x = self.c_proj(x)
+        return x
+
+class Block(nn.Module):
+
+    def __init__(self, config):
+        super().__init__()
+        self.attn = CausalSelfAttention(config)
+        self.mlp = MLP(config)
+
+    def forward(self, x):
+        x = x + self.attn(F.rms_norm(x, (x.size(-1),)))
+        x = x + self.mlp(F.rms_norm(x, (x.size(-1),)))
+        return x
+
+# -----------------------------------------------------------------------------
+# The main GPT-2 model
+
+@dataclass
+class GPTConfig:
+    vocab_size : int = 50304
+    n_layer : int = 12
+    n_head : int = 6 # head dim 128 suggested by @Grad62304977
+    n_embd : int = 768
+
+class GPT(nn.Module):
+
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+
+        self.transformer = nn.ModuleDict(dict(
+            wte = nn.Embedding(config.vocab_size, config.n_embd),
+            h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
+        ))
+        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
+        self.transformer.wte.weight = self.lm_head.weight # https://paperswithcode.com/method/weight-tying
+
+    def forward(self, idx, targets=None, return_logits=True):
+
+        # forward the GPT model itself
+        x = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
+        for block in self.transformer.h:
+            x = block(x)
+        x = F.rms_norm(x, (x.size(-1),))
+
+        if targets is not None:
+            # if we are given some desired targets also calculate the loss
+            logits = self.lm_head(x)
+            logits = logits.float() # use tf32/fp32 for logits
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+        else:
+            # inference-time mini-optimization: only forward the lm_head on the very last position
+            logits = self.lm_head(x[:, [-1], :]) # note: using list [-1] to preserve the time dim
+            logits = logits.float() # use tf32/fp32 for logits
+            loss = None
+
+        # there are performance reasons why not returning logits is prudent, if not needed
+        if not return_logits:
+            logits = None
+
+        return logits
 
 def make_attn(settings: dict[str, Any]):
     # You can parametrically change anything you want about the attn blocks here
@@ -128,7 +262,7 @@ def make_net(settings: dict[str, Any]):
         'outputs': nn.Linear(settings['width'], total_num_tokens, bias=False),
     })
     net = SpeedyLangNet(network_dict)
-    net = net.to("cuda", dtype=torch.bfloat16)
+    net = net.to(DEVICE, dtype=torch.bfloat16)
     net.eval()
 
     # Initialize the embedding and output matrixes, with weights scaled based upon the dimensionality of the network.
@@ -139,6 +273,13 @@ def make_net(settings: dict[str, Any]):
 
 
 def make_net_from_name(name: str) -> SpeedyLangNet:
+    if "1549M" in name:
+        return GPT(GPTConfig(
+            vocab_size=50304,
+            n_layer=52,
+            n_head=12,
+            n_embd=1536,
+        )).to(DEVICE)
     if "46M" in name:
         depth, width =  8, 384
     elif "240M" in name:
@@ -170,6 +311,20 @@ def download_model(pretrained: str, cache_dir: str = ".") -> str:
     return str(model_path)
 
 
+def fix_param_names(model_name: str):
+    """Safetensors for some reason added an '_orig_mod' prefix to all param names 
+    in the gpt2.muon runs
+    -> remove it or model won't load"""
+    if "1549M" not in model_name:
+        return
+
+    root_path = Path(f"models--snimu--{model_name.split('/')[1]}")
+    filepath = next(root_path.rglob('model.safetensors'))
+    loaded = safetensors.torch.load_file(filepath)
+    corrected = {k.replace("_orig_mod.", ""): v for k, v in loaded.items()}
+    safetensors.torch.save_file(corrected, filepath)
+
+
 @torch.no_grad()
 def generate(
         net, encoder, query: str, max_gen_tokens: int = 128, until: list[str] | None = None,
@@ -177,7 +332,7 @@ def generate(
 ) -> tuple[str, torch.Tensor, torch.Tensor]:
     # Encode the input tokens
     input_ids = encoder.encode_ordinary(query)
-    input_ids = torch.tensor(input_ids, device="cuda", dtype=torch.int).unsqueeze(0)
+    input_ids = torch.tensor(input_ids, device=DEVICE, dtype=torch.int).unsqueeze(0)
     input_len = input_ids.shape[1]
     
     # Generate the output tokens
@@ -188,7 +343,7 @@ def generate(
         output_id = logits[:, -1, :50304].topk(choose_nth_best, dim=-1).indices[:, -1].item()  # ignore last token position, only decode valid token indices ( up to50304)
         char = encoder.decode([output_id])
         output_str.append(char)
-        all_ids = torch.cat([all_ids, torch.tensor([output_id], device="cuda", dtype=torch.int).unsqueeze(0)], dim=1)
+        all_ids = torch.cat([all_ids, torch.tensor([output_id], device=DEVICE, dtype=torch.int).unsqueeze(0)], dim=1)
         if until and char in until:
             break
 
@@ -211,7 +366,7 @@ def generate_with_mask(
 ) -> tuple[str, torch.Tensor, torch.Tensor]:
     # Encode the input tokens
     input_ids = encoder.encode_ordinary(query)
-    input_ids = torch.tensor(input_ids, device="cuda", dtype=torch.int).unsqueeze(0)
+    input_ids = torch.tensor(input_ids, device=DEVICE, dtype=torch.int).unsqueeze(0)
     input_len = input_ids.shape[1]
 
     all_ids = torch.cat(
@@ -219,7 +374,7 @@ def generate_with_mask(
             input_ids, 
             torch.empty(
                 (1, max_gen_tokens), 
-                device="cuda", 
+                device=DEVICE, 
                 dtype=torch.int,
             ).fill_(mask),
         ], 
@@ -237,13 +392,31 @@ def generate_with_mask(
 class CausalUl2(LM):
     def __init__(
             self,
-            pretrained: str,
+            size: int,
+            mode: str,
             **kwargs,
     ) -> None:
         super().__init__()
+        assert size in (1549, 1300, 773, 240)
+        assert mode in ("r", "c")
+        if size == 773:
+            model_name_c = "snimu/causal-ul2-C-fineweb10BT-773M-26heads-lr090"
+            model_name_r = "snimu/causal-ul2-R-fineweb10BT-773M-26heads-lr090"
+        elif size == 240:
+            model_name_c = "snimu/causal-ul2-C-fineweb10BT-240M-16heads-lr090"
+            model_name_r = "snimu/causal-ul2-R-fineweb10BT-240M-16heads-lr090"
+        elif size == 1300:
+            model_name_c = "snimu/causal-ul2-C-fineweb10BT-1300M-32heads-lr090"
+            model_name_r = "snimu/causal-ul2-R-fineweb10BT-1300M-32heads-lr090"
+        elif size == 1549:
+            model_name_c = "snimu/p1549M_t100B_w1536_d52_h12_b480_s1024_i203450_clip0-15_seed0"
+            model_name_r = "snimu/p1549M_t100B_w1536_d52_h12_b480_s1024_i203450_clip0-15_withMask_seed0"
+        pretrained = model_name_c if mode == "c" else model_name_r
+        
         self.net = make_net_from_name(pretrained)
         self.model_path = download_model(pretrained)
-        safetensors.torch.load_model(self.net, self.model_path, device="cuda")
+        fix_param_names(pretrained)
+        safetensors.torch.load_model(self.net, self.model_path, device=DEVICE)
 
         self.encoder = tiktoken.get_encoding("gpt2")
 
@@ -337,8 +510,8 @@ def _test_model_loading():
         "Saint Barthélemy was for many years a French commune forming part of Guadeloupe, which is an overseas region and department of France. In 2003 the island voted in favour of secession from Guadeloupe to form a separate overseas collectivity (collectivité d'outre-mer, abbreviated to COM) of France. The collectivity is one of four territories among the Leeward Islands in the northeastern Caribbean that make up the French West Indies, along with Saint Martin, Guadeloupe (200 kilometres (120 mi) southeast) and",
     ]
 
-    net_c = net_c.to("cuda")
-    net_r = net_r.to("cuda")
+    net_c = net_c.to(DEVICE)
+    net_r = net_r.to(DEVICE)
 
     encoder = tiktoken.get_encoding("gpt2")
     for sentence in sentences:
