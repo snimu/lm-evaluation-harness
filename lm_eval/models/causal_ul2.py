@@ -334,46 +334,30 @@ def generate(
         if until and char in until:
             break
 
-    # Get the logprops
-    logprobs = F.softmax(net(all_ids), dim=-1).log()
-    
     # Get the output text
     output_text = "".join(output_str)
-    return output_text, logprobs, logprobs.squeeze()[input_len:]
+    return output_text
 
 
 @torch.no_grad()
-def generate_with_mask(
-    net: SpeedyLangNet, 
-    encoder: tiktoken.Encoding, 
-    query: str, 
-    max_gen_tokens: int = 128, 
-    mask: int = 50308,
-    choose_nth_best: int = 1,
-) -> tuple[str, torch.Tensor, torch.Tensor]:
+def get_logprobs(
+        net, encoder, query: str, target: str | None = None
+) -> torch.Tensor:
     # Encode the input tokens
     input_ids = encoder.encode_ordinary(query)
-    input_ids = torch.tensor(input_ids, device=DEVICE, dtype=torch.int).unsqueeze(0)
-    input_len = input_ids.shape[1]
-
-    all_ids = torch.cat(
-        [
-            input_ids, 
-            torch.empty(
-                (1, max_gen_tokens), 
-                device=DEVICE, 
-                dtype=torch.int,
-            ).fill_(mask),
-        ], 
-        dim=1,
-    )
-    logits: torch.Tensor = net(all_ids)
-    logprobs = F.log_softmax(logits, dim=-1)
-    outputs = logits[:, input_len:, :50304].topk(choose_nth_best, dim=-1).indices[:, :, -1]
-    outputs = outputs.squeeze().tolist()
-    output_text = encoder.decode(outputs)
+    target_ids = encoder.encode_ordinary(target) if target else None
     
-    return output_text, logprobs, logprobs.squeeze()[input_len:]
+    if target_ids is not None:
+        # Combine input and target, but exclude last target token as we don't predict it
+        all_ids = torch.tensor(input_ids + target_ids[:-1], device=DEVICE, dtype=torch.int).unsqueeze(0)
+    else:
+        all_ids = torch.tensor(input_ids, device=DEVICE, dtype=torch.int).unsqueeze(0)
+    
+    # Get logits and convert to log probabilities
+    logits = net(all_ids)
+    logprobs = F.log_softmax(logits[:, len(input_ids)-1:, :50304], dim=-1)  # Only look at predictions starting from the last input token
+    
+    return logprobs
 
 
 class CausalUl2(LM):
@@ -412,30 +396,28 @@ class CausalUl2(LM):
     ) -> list[tuple[float, bool]]:
         results = []
         for request in tqdm(requests, disable=disable_tqdm):
-            # Get the input tokens
-            query = request.args[0]
-            target = request.args[1]
+            query, target = request.args
             target_ids = self.encoder.encode_ordinary(target)
-            text, _, logprobs = generate(self.net, self.encoder, query, max_gen_tokens=len(target_ids))
-            reduced_logprobs = [logprobs[i, t].item() for i, t in enumerate(target_ids)]
+            
+            logprobs = get_logprobs(self.net, self.encoder, query, target)
+            reduced_logprobs = [logprobs[0, i, tid].item() for i, tid in enumerate(target_ids)]
             ll = sum(reduced_logprobs)
-            is_greedy = text == target
+            
+            # For is_greedy, check if target tokens have highest probability
+            is_greedy = all(tid == logprobs[0, i, :].argmax().item() for i, tid in enumerate(target_ids))
+            
             results.append((ll, is_greedy))
-
         return results
 
 
-    def loglikelihood_rolling(
-            self, requests: list[Instance], disable_tqdm: bool = False
-    ) -> list[float]:
+    def loglikelihood_rolling(self, requests: list[Instance], disable_tqdm: bool = False) -> list[float]:
         lls = []
         for request in tqdm(requests, disable=disable_tqdm):
-            # Get the input tokens
-            query = request.args[0]
-            target = request.args[1]
+            query, target = request.args
             target_ids = self.encoder.encode_ordinary(target)
-            _, full_logprobs, _ = generate(self.net, self.encoder, query, max_gen_tokens=len(target_ids))
-            reduced_logprobs = [full_logprobs[i, t] for i, t in enumerate(target_ids)]
+            
+            logprobs = get_logprobs(self.net, self.encoder, query, target)
+            reduced_logprobs = [logprobs[0, i, tid].item() for i, tid in enumerate(target_ids)]
             ll = sum(reduced_logprobs)
             lls.append(ll)
 
@@ -451,7 +433,7 @@ class CausalUl2(LM):
             until = request.args[1].get("until", ["</s>"])
             max_gen_tokens = request.args[1].get("max_gen_tokens", 128)
 
-            text, _, _ = generate(self.net, self.encoder, query, max_gen_tokens, until)
+            text = generate(self.net, self.encoder, query, max_gen_tokens, until)
             continuations.append(text)
 
         return continuations
