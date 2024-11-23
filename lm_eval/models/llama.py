@@ -1,4 +1,15 @@
 
+"""
+INSTRUCTIONS:
+
+- you need to run `huggingface-cli login` once and add your token
+- you need access to the meta-llama weights
+
+ON LAMBDA LABS:
+
+- you need to run `pip install -U torch torchvision` before running this script
+"""
+
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
