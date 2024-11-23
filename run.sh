@@ -1,0 +1,9 @@
+lm-eval --model "llama-merge" --model_args="instruct=False,merge=False" --tasks="arithmetic,mmlu,truthfulqa" --batch_size="auto" --max_batch_size=512 --output_path="results-0shot/results.json" --log_samples --seed 1234 --num_fewshot=0
+lm-eval --model "llama-merge" --model_args="instruct=True,merge=False" --tasks="arithmetic,mmlu,truthfulqa" --batch_size="auto" --max_batch_size=512 --output_path="results-instruct-0shot/results.json" --log_samples --seed 1234 --num_fewshot=0
+lm-eval --model "llama-merge" --model_args="instruct=False,merge=False" --tasks="arithmetic,mmlu,truthfulqa" --batch_size="auto" --max_batch_size=512 --output_path="results-3shot/results.json" --log_samples --seed 2345 --num_fewshot=3
+lm-eval --model "llama-merge" --model_args="instruct=True,merge=False" --tasks="arithmetic,mmlu,truthfulqa" --batch_size="auto" --max_batch_size=512 --output_path="results-instruct-3shot/results.json" --log_samples --seed 2345 --num_fewshot=3
+
+lm-eval --model "llama-merge" --model_args="instruct=False,merge=True" --tasks="arithmetic,mmlu,truthfulqa" --batch_size="auto" --max_batch_size=512 --output_path="results-merge-0shot/results.json" --log_samples --seed 1234 --num_fewshot=0
+lm-eval --model "llama-merge" --model_args="instruct=True,merge=True" --tasks="arithmetic,mmlu,truthfulqa" --batch_size="auto" --max_batch_size=512 --output_path="results-instruct-merge-0shot/results.json" --log_samples --seed 1234 --num_fewshot=0
+lm-eval --model "llama-merge" --model_args="instruct=False,merge=True" --tasks="arithmetic,mmlu,truthfulqa" --batch_size="auto" --max_batch_size=512 --output_path="results-merge-3shot/results.json" --log_samples --seed 2345 --num_fewshot=3
+lm-eval --model "llama-merge" --model_args="instruct=True,merge=True" --tasks="arithmetic,mmlu,truthfulqa" --batch_size="auto" --max_batch_size=512 --output_path="results-instruct-merge-3shot/results.json" --log_samples --seed 2345 --num_fewshot=3
