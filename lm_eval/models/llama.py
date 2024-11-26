@@ -95,9 +95,10 @@ class LlamaModel(LM):
             **kwargs,
     ):
         super().__init__()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model_name = "meta-llama/Llama-3.2-1B-instruct" if instruct else "meta-llama/Llama-3.2-1B"
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForCausalLM.from_pretrained(model_name)
+        self.model = AutoModelForCausalLM.from_pretrained(model_name).to(self.device)
         self.merge_tokens = merge_tokens
 
     def loglikelihood(
