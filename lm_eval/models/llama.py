@@ -29,13 +29,12 @@ def generate(
     input_ids = tokenizer(query, return_tensors="pt").input_ids.to(model.device)
     
     # Generate the output tokens
-    output_str = []
     all_ids = input_ids
     
     for _ in range(max_gen_tokens):
         # If merge_tokens is True, convert current sequence to text and back to tokens
-        if merge_tokens and len(output_str) > 0:
-            current_text = query + "".join(output_str)
+        if merge_tokens:
+            current_text = tokenizer.decode(all_ids)
             all_ids = tokenizer(current_text, return_tensors="pt").input_ids.to(model.device)
         
         outputs = model(all_ids)
@@ -44,38 +43,31 @@ def generate(
         
         # Decode single token
         char = tokenizer.decode([output_id])
-        output_str.append(char)
         
-        if not merge_tokens:
-            all_ids = torch.cat([all_ids, torch.tensor([[output_id]], device=model.device)], dim=1)
+        all_ids = torch.cat([all_ids, torch.tensor([[output_id]], device=model.device)], dim=1)
         
         if until and char in until:
             break
 
-    output_text = "".join(output_str)
+    output_text = tokenizer.decode(all_ids[len(input_ids):])
     return output_text
 
 
 @torch.no_grad()
 def get_logprobs(
-        model, tokenizer, query: str, target: str | None = None, merge_tokens: bool = False
+        model, tokenizer: AutoTokenizer, query: str, target: str | None = None, merge_tokens: bool = False
 ) -> torch.Tensor:
     # Encode the input tokens
-    input_encoding = tokenizer(query, return_tensors="pt")
-    input_ids = input_encoding.input_ids.to(model.device)
+    input_ids = tokenizer(query, return_tensors="pt").input_ids.to(model.device)
     input_len = input_ids.shape[1]
     
     if target is not None:
         target_encoding = tokenizer(target, return_tensors="pt")
         target_ids = target_encoding.input_ids.to(model.device)
         
+        all_ids = torch.cat([input_ids, target_ids[:, :-1]], dim=1)
         if merge_tokens:
-            # Merge by converting to text and back to tokens
-            full_text = query + tokenizer.decode(target_ids[0, :-1])
-            all_ids = tokenizer(full_text, return_tensors="pt").input_ids.to(model.device)
-        else:
-            # Original behavior
-            all_ids = torch.cat([input_ids, target_ids[:, :-1]], dim=1)
+            all_ids = tokenizer(tokenizer.decode(all_ids), return_tensors="pt").input_ids.to(model.device)
     else:
         all_ids = input_ids
     
