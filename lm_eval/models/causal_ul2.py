@@ -260,6 +260,13 @@ def make_net(settings: dict[str, Any]):
 
 
 def make_net_from_name(name: str) -> SpeedyLangNet:
+    if "2556M" in name:
+        return GPT(GPTConfig(
+            vocab_size=50304,
+            n_layer=64,
+            n_head=14,
+            n_embd=1792,
+        )).to(DEVICE)
     if "1549M" in name:
         return GPT(GPTConfig(
             vocab_size=50304,
@@ -302,13 +309,15 @@ def fix_param_names(model_name: str):
     """Safetensors for some reason added an '_orig_mod' prefix to all param names 
     in the gpt2.muon runs
     -> remove it or model won't load"""
-    if "1549M" not in model_name:
+    if not ("1549M" in model_name or "2556M" in model_name):
         return
 
     root_path = Path(f"models--snimu--{model_name.split('/')[1]}")
     filepath = next(root_path.rglob('model.safetensors'))
     loaded = safetensors.torch.load_file(filepath)
     corrected = {k.replace("_orig_mod.", ""): v for k, v in loaded.items()}
+    if "transformer.wte.weight" not in corrected:
+        corrected["transformer.wte.weight"] = corrected["lm_head.weight"]
     safetensors.torch.save_file(corrected, filepath)
 
 
@@ -368,7 +377,7 @@ class CausalUl2(LM):
             **kwargs,
     ) -> None:
         super().__init__()
-        assert size in (1549, 1300, 773, 240), f"size must be one of (1549, 1300, 773, 240), got {size}"
+        assert size in (2556, 1549, 1300, 773, 240), f"size must be one of (2556, 1549, 1300, 773, 240), got {size}"
         assert mode in ("r", "c"), f"mode must be one of ('r', 'c'), got {mode}"
         if size == 773:
             model_name_c = "snimu/causal-ul2-C-fineweb10BT-773M-26heads-lr090"
@@ -382,6 +391,9 @@ class CausalUl2(LM):
         elif size == 1549:
             model_name_c = "snimu/p1549M_t100B_w1536_d52_h12_b480_s1024_i203450_clip0-15_seed0"
             model_name_r = "snimu/p1549M_t100B_w1536_d52_h12_b480_s1024_i203450_clip0-15_withMask_seed0"
+        elif size == 2556:
+            model_name_c = "snimu/p2556M_t100B_w1792_d64_h14_b480_s1024_i203450_clip0-15_seed1234"
+            model_name_r = "snimu/p2556M_t100B_w1792_d64_h14_b480_s1024_i203450_clip0-15_withMask_seed1234"
         pretrained = model_name_c if mode == "c" else model_name_r
 
         self.net = make_net_from_name(pretrained)
