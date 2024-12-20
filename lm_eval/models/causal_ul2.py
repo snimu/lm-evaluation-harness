@@ -316,8 +316,6 @@ def fix_param_names(model_name: str):
     filepath = next(root_path.rglob('model.safetensors'))
     loaded = safetensors.torch.load_file(filepath)
     corrected = {k.replace("_orig_mod.", ""): v for k, v in loaded.items()}
-    if "transformer.wte.weight" not in corrected:
-        corrected["transformer.wte.weight"] = corrected["lm_head.weight"]
     safetensors.torch.save_file(corrected, filepath)
 
 
