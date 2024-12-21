@@ -389,6 +389,7 @@ class CausalUl2(LM):
             self,
             size: int,
             mode: str,
+            temperature: float = 0.0,
             **kwargs,
     ) -> None:
         super().__init__()
@@ -418,6 +419,8 @@ class CausalUl2(LM):
 
         self.encoder = tiktoken.get_encoding("gpt2")
 
+        self.temperature = temperature
+
     def loglikelihood(
             self, requests: list[Instance], disable_tqdm: bool = False
     ) -> list[tuple[float, bool]]:
@@ -426,7 +429,7 @@ class CausalUl2(LM):
             query, target = request.args
             target_ids = self.encoder.encode_ordinary(target)
             
-            logprobs = get_logprobs(self.net, self.encoder, query, target)
+            logprobs = get_logprobs(self.net, self.encoder, query, target, temperature=self.temperature)
             reduced_logprobs = [logprobs[0, i, tid].item() for i, tid in enumerate(target_ids)]
             ll = sum(reduced_logprobs)
             
@@ -443,7 +446,7 @@ class CausalUl2(LM):
             query, target = request.args
             target_ids = self.encoder.encode_ordinary(target)
             
-            logprobs = get_logprobs(self.net, self.encoder, query, target)
+            logprobs = get_logprobs(self.net, self.encoder, query, target, temperature=self.temperature)
             reduced_logprobs = [logprobs[0, i, tid].item() for i, tid in enumerate(target_ids)]
             ll = sum(reduced_logprobs)
             lls.append(ll)
@@ -460,7 +463,7 @@ class CausalUl2(LM):
             until = request.args[1].get("until", ["</s>"])
             max_gen_tokens = request.args[1].get("max_gen_tokens", 128)
 
-            text = generate(self.net, self.encoder, query, max_gen_tokens, until)
+            text = generate(self.net, self.encoder, query, max_gen_tokens, until, temperature=self.temperature)
             continuations.append(text)
 
         return continuations
