@@ -322,19 +322,26 @@ def fix_param_names(model_name: str):
 @torch.no_grad()
 def generate(
         net, encoder, query: str, max_gen_tokens: int = 128, until: list[str] | None = None,
-        choose_nth_best: int = 1,
+        temperature: float = 1.0,
 ) -> tuple[str, torch.Tensor, torch.Tensor]:
     # Encode the input tokens
     input_ids = encoder.encode_ordinary(query)
     input_ids = torch.tensor(input_ids, device=DEVICE, dtype=torch.int).unsqueeze(0)
-    input_len = input_ids.shape[1]
     
     # Generate the output tokens
     output_str = []
     all_ids = input_ids
     for _ in range(max_gen_tokens):
         logits: torch.Tensor = net(all_ids)
-        output_id = logits[:, -1, :50304].topk(choose_nth_best, dim=-1).indices[:, -1].item()  # ignore last token position, only decode valid token indices ( up to50304)
+        logits = logits[:, -1, :50304]  # Get last token's logits
+        
+        if temperature == 0.0:
+            output_id = logits.argmax(dim=-1).item()
+        else:
+            logits = logits / temperature
+            probs = logits.softmax(dim=-1)
+            output_id = torch.multinomial(probs, 1).squeeze().item()
+            
         char = encoder.decode([output_id])
         output_str.append(char)
         all_ids = torch.cat([all_ids, torch.tensor([output_id], device=DEVICE, dtype=torch.int).unsqueeze(0)], dim=1)
@@ -348,7 +355,7 @@ def generate(
 
 @torch.no_grad()
 def get_logprobs(
-        net, encoder, query: str, target: str | None = None
+        net, encoder, query: str, target: str | None = None, temperature: float = 1.0
 ) -> torch.Tensor:
     # Encode the input tokens
     input_ids = encoder.encode_ordinary(query)
@@ -362,7 +369,17 @@ def get_logprobs(
     
     # Get logits and convert to log probabilities
     logits = net(all_ids)
-    logprobs = F.log_softmax(logits[:, len(input_ids)-1:, :50304], dim=-1)  # Only look at predictions starting from the last input token
+    logits = logits[:, len(input_ids)-1:, :50304]  # Only look at predictions starting from the last input token
+    
+    if temperature == 0.0:
+        # For temperature 0, create one-hot distribution at argmax
+        max_indices = logits.argmax(dim=-1, keepdim=True)
+        logprobs = torch.zeros_like(logits).fill_(float('-inf'))
+        logprobs.scatter_(-1, max_indices, 0.0)
+    else:
+        # Apply temperature and convert to log probabilities
+        logits = logits / temperature
+        logprobs = F.log_softmax(logits, dim=-1)
     
     return logprobs
 
