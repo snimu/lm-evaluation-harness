@@ -322,7 +322,7 @@ def fix_param_names(model_name: str):
 @torch.no_grad()
 def generate(
         net, encoder, query: str, max_gen_tokens: int = 128, until: list[str] | None = None,
-        temperature: float = 1.0,
+        temperature: float = 1.0, kth_token: int = 1,
 ) -> tuple[str, torch.Tensor, torch.Tensor]:
     # Encode the input tokens
     input_ids = encoder.encode_ordinary(query)
@@ -336,7 +336,7 @@ def generate(
         logits = logits[:, -1, :50304]  # Get last token's logits
         
         if temperature == 0.0:
-            output_id = logits.argmax(dim=-1).item()
+            output_id = logits.topk(k=kth_token, dim=-1).indices[0, 1].item()
         else:
             logits = logits / temperature
             probs = logits.softmax(dim=-1)
@@ -390,6 +390,7 @@ class CausalUl2(LM):
             size: int,
             mode: str,
             temperature: float = 0.0,
+            kth_token: int = 1,
             **kwargs,
     ) -> None:
         super().__init__()
@@ -420,6 +421,7 @@ class CausalUl2(LM):
         self.encoder = tiktoken.get_encoding("gpt2")
 
         self.temperature = temperature
+        self.kth_token = kth_token
 
     def loglikelihood(
             self, requests: list[Instance], disable_tqdm: bool = False
@@ -463,7 +465,10 @@ class CausalUl2(LM):
             until = request.args[1].get("until", ["</s>"])
             max_gen_tokens = request.args[1].get("max_gen_tokens", 128)
 
-            text = generate(self.net, self.encoder, query, max_gen_tokens, until, temperature=self.temperature)
+            text = generate(
+                self.net, self.encoder, query, max_gen_tokens, until,
+                temperature=self.temperature, kth_token=self.kth_token,
+            )
             continuations.append(text)
 
         return continuations
