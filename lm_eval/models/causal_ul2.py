@@ -336,7 +336,7 @@ def generate(
         logits = logits[:, -1, :50304]  # Get last token's logits
         
         if temperature == 0.0:
-            output_id = logits.topk(k=kth_token, dim=-1).indices[..., -1].item()
+            output_id = logits.topk(k=kth_token, dim=-1).indices[..., kth_token-1].item()
         else:
             logits = logits / temperature
             probs = logits.softmax(dim=-1)
