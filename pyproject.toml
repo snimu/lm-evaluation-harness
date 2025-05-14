@@ -39,6 +39,13 @@ dependencies = [
     "dill",
     "word2number",
     "more_itertools",
+    "einops",
+    "tiktoken",
+    "huggingface_hub[cli]",
+    "psutil",
+    "tqdm",
+    "wandb",
+    "safetensors",
 ]
 
 [tool.setuptools.packages.find]
