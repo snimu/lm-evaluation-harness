@@ -540,7 +540,7 @@ def make_embedding(filename: str, vocab_size: int) -> nn.Embedding:
     return emb
 
 
-def tokens_to_bytes(tokens: torch.Tensor, emb: nn.Embedding) -> torch.Tensor:
+def tokens_to_bytes(tokens: Tensor, emb: nn.Embedding) -> Tensor:
     with torch.no_grad():
         byte_tensor = emb(tokens).to(torch.int64)
     if tokens.ndim == 2:
@@ -552,8 +552,8 @@ def tokens_to_bytes(tokens: torch.Tensor, emb: nn.Embedding) -> torch.Tensor:
 # Thanks Google Gemini Pro 2.5 for the 150x speedup!
 @torch.compile(mode="reduce-overhead")
 def pull_from_right(
-    byte_tensor: torch.Tensor, bytes_per_token: int, pad_byte: int, eot_byte: int
-) -> torch.Tensor:
+    byte_tensor: Tensor, bytes_per_token: int, pad_byte: int, eot_byte: int
+) -> Tensor:
     """
     Pulls valid bytes towards the left boundary of each token, considering EOT tokens
     as sequence breaks. Bytes are taken from the current token up to (but not including)
@@ -660,8 +660,8 @@ def pull_from_right(
 
 @torch.compile(mode="reduce-overhead")
 def pull_from_left(
-    byte_tensor: torch.Tensor, bytes_per_token: int, pad_byte: int, eot_byte: int
-) -> torch.Tensor:
+    byte_tensor: Tensor, bytes_per_token: int, pad_byte: int, eot_byte: int
+) -> Tensor:
     """
     Pulls valid bytes towards the right boundary of each token, considering EOT tokens
     as sequence breaks. Bytes are taken from the token after the previous EOT up to
@@ -838,7 +838,7 @@ class TokensToBytes:
         self.device = device
 
     @torch.no_grad()
-    def __call__(self, tokens: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def __call__(self, tokens: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         return self.create_data_from_toks(tokens.to(self.device))
 
 
@@ -971,10 +971,10 @@ class Sampler:
     def __init__(self):
         self.eot_token_id = 50256
 
-    def sample_argmax(self, logits: torch.Tensor) -> torch.Tensor:
+    def sample_argmax(self, logits: Tensor) -> Tensor:
         return torch.argmax(logits, dim=-1)
 
-    def __call__(self, logits: torch.Tensor) -> torch.Tensor:
+    def __call__(self, logits: Tensor) -> Tensor:
         logits[..., self.eot_token_id] = -float("inf")
         return self.sample_argmax(logits)
 
@@ -987,13 +987,13 @@ def generate_until__tokens_out(model: GPT, ttb: TokensToBytes, requests: list[In
         max_toks = request.args[1].get("max_gen_toks", 1024)
         until = request.args[1].get("until", None)
 
-        toks, bytes_padded_in, bytes_pulled_in = ttb(torch.tensor(enc.encode(query)))
+        toks, bytes_padded_in, bytes_pulled_in = ttb(torch.tensor(enc.encode(query), device="cuda"))
         text = query
         for i in range(max_toks):
             logits = model(toks, bytes_padded_in, bytes_pulled_in).squeeze()[-1]
             toks = torch.cat([toks, sampler(logits).view(1, 1)], dim=1)
             text = enc.decode(toks.squeeze().tolist())
-            toks, bytes_padded_in, bytes_pulled_in = ttb(torch.tensor(enc.encode(text)))
+            toks, bytes_padded_in, bytes_pulled_in = ttb(torch.tensor(enc.encode(text), device="cuda"))
             if until and any(stop in text for stop in until):
                 break
         texts.append(text)
@@ -1009,16 +1009,16 @@ def loglikelihood__tokens_out(model: GPT, ttb: TokensToBytes, requests: list[Ins
 
         len_in = len(enc.encode(query))
         
-        toks_in, bytes_padded_in, bytes_pulled_in = ttb(torch.tensor(enc.encode(query)))
-        toks_out, bytes_padded_out, bytes_pulled_out = ttb(torch.tensor(enc.encode(targets)))
+        toks_in, bytes_padded_in, bytes_pulled_in = ttb(torch.tensor(enc.encode(query), device="cuda"))
+        toks_out, bytes_padded_out, bytes_pulled_out = ttb(torch.tensor(enc.encode(targets), device="cuda"))
         toks = torch.cat([toks_in, toks_out], dim=-1)
         bytes_padded = torch.cat([bytes_padded_in, bytes_padded_out], dim=-1) if bytes_padded_in is not None else None
         bytes_pulled = torch.cat([bytes_pulled_in, bytes_pulled_out], dim=-1) if bytes_pulled_in is not None else None
 
         logits: Tensor = model(toks, bytes_padded, bytes_pulled)
         logits = logits.squeeze()[len_in-1:-1]  # teacher-forced predictions of targets
-        is_greedy = torch.all(logits.argmax(dim=-1) == torch.tensor(enc.encode(targets)))
-        lls = F.log_softmax(logits, dim=-1).gather(1, torch.tensor(enc.encode(targets)).unsqueeze(0)).squeeze()
+        is_greedy = torch.all(logits.argmax(dim=-1) == torch.tensor(enc.encode(targets, device="cuda")))
+        lls = F.log_softmax(logits, dim=-1).gather(1, torch.tensor(enc.encode(targets), device="cuda").unsqueeze(0)).squeeze()
         results.append((lls, is_greedy))
     return results
 
@@ -1037,11 +1037,11 @@ def loglikelihood_rolling__tokens_out(model: GPT, ttb: TokensToBytes, requests: 
         loglikelihood = 0.0
         
         for idx in range(len_out):
-            toks, bytes_padded, bytes_pulled = ttb(torch.tensor(enc.encode(text)))
+            toks, bytes_padded, bytes_pulled = ttb(torch.tensor(enc.encode(text), device="cuda"))
             logits: Tensor = model(toks, bytes_padded, bytes_pulled)
             logits = logits.squeeze()[-1]
             lls = F.log_softmax(logits, dim=-1)
-            target = torch.tensor(enc.encode(targets)[idx])
+            target = torch.tensor(enc.encode(targets)[idx], device="cuda")
             loglikelihood += lls[target]
             next_token = sampler(logits)
             text += enc.decode([next_token])
