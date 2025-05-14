@@ -1055,6 +1055,7 @@ def loglikelihood_rolling__bytes_out(model: GPT, ttb: TokensToBytes, requests: l
 # MoT model
 
 
+@register_model("MoT")
 class MoTModel(LM):
     def __init__(self, name: str) -> None:
         assert os.getenv("HF_TOKEN") is not None, "Please set the HF_TOKEN environment variable."
@@ -1085,7 +1086,3 @@ class MoTModel(LM):
             return generate_until__tokens_out(self.model, self.ttb, requests)
         else:
             raise NotImplementedError("Sampling for byte-outputs not yet implemented")
-
-
-if "MoT" not in MODEL_REGISTRY:  # doing this as a decorator caused issues in the past.
-    register_model("MoT")(MoTModel)
