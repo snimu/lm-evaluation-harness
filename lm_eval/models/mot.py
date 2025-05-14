@@ -1076,7 +1076,7 @@ class MoTModel(LM):
         super().__init__()
         self.name = name
         bh, _ = parse_name_to_hyperparams(name)
-        self.model = load_model(name).to("cuda").eval()
+        self.model = torch.compile(load_model(name).cuda()).eval()
         self.sampler = Sampler()
         self.ttb = TokensToBytes(bh, device="cuda")
         self.toks_out = bh.byte_mixout_method == "noop"
