@@ -1056,7 +1056,7 @@ def loglikelihood_rolling__bytes_out(model: GPT, ttb: TokensToBytes, requests: l
 
 
 class MoTModel(LM):
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, **kwargs) -> None:
         assert os.getenv("HF_TOKEN") is not None, "Please set the HF_TOKEN environment variable."
         super().__init__()
         self.name = name
