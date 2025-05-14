@@ -979,6 +979,7 @@ class Sampler:
         return self.sample_argmax(logits)
 
 
+@torch.inference_mode()
 def generate_until__tokens_out(model: GPT, ttb: TokensToBytes, requests: list[Instance], sampler: Sampler) -> list[str]:
     enc = tiktoken.encoding_for_model("gpt-2")
     texts = []
@@ -1000,6 +1001,7 @@ def generate_until__tokens_out(model: GPT, ttb: TokensToBytes, requests: list[In
     return texts
 
 
+@torch.inference_mode()
 def loglikelihood__tokens_out(model: GPT, ttb: TokensToBytes, requests: list[Instance]) -> list[tuple[float, bool]]:
     enc = tiktoken.encoding_for_model("gpt-2")
     results = []
@@ -1023,7 +1025,7 @@ def loglikelihood__tokens_out(model: GPT, ttb: TokensToBytes, requests: list[Ins
     return results
 
 
-
+@torch.inference_mode()
 def loglikelihood_rolling__tokens_out(model: GPT, ttb: TokensToBytes, requests: list[Instance], sampler: Sampler) -> list[tuple[float, bool]]:
     enc = tiktoken.encoding_for_model("gpt-2")
     results = []
@@ -1049,14 +1051,17 @@ def loglikelihood_rolling__tokens_out(model: GPT, ttb: TokensToBytes, requests: 
     return results
 
 
+@torch.inference_mode()
 def generate_until__bytes_out(model: GPT, ttb: TokensToBytes, requests: list[Instance]) -> list[str]:
     pass
 
 
+@torch.inference_mode()
 def loglikelihood__bytes_out(model: GPT, ttb: TokensToBytes, requests: list[Instance]) -> list[tuple[float, bool]]:
     pass
 
 
+@torch.inference_mode()
 def loglikelihood_rolling__bytes_out(model: GPT, ttb: TokensToBytes, requests: list[Instance]) -> list[tuple[float, bool]]:
     pass
 
@@ -1065,7 +1070,6 @@ def loglikelihood_rolling__bytes_out(model: GPT, ttb: TokensToBytes, requests: l
 # MoT model
 
 
-@torch.inference_mode()
 class MoTModel(LM):
     def __init__(self, name: str, **kwargs) -> None:
         assert os.getenv("HF_TOKEN") is not None, "Please set the HF_TOKEN environment variable."
