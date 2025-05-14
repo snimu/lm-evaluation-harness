@@ -1065,13 +1065,14 @@ def loglikelihood_rolling__bytes_out(model: GPT, ttb: TokensToBytes, requests: l
 # MoT model
 
 
+@torch.inference_mode()
 class MoTModel(LM):
     def __init__(self, name: str, **kwargs) -> None:
         assert os.getenv("HF_TOKEN") is not None, "Please set the HF_TOKEN environment variable."
         super().__init__()
         self.name = name
         bh, _ = parse_name_to_hyperparams(name)
-        self.model = load_model(name).to("cuda")
+        self.model = load_model(name).to("cuda").eval()
         self.sampler = Sampler()
         self.ttb = TokensToBytes(bh, device="cuda")
         self.toks_out = bh.byte_mixout_method == "noop"
