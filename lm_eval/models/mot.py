@@ -281,7 +281,6 @@ class ByteSelfAttn(nn.Module):
             head_dim=128,
         ) if byte_params.use_byte_self_attn else nn.Identity()
 
-
     def update_block_mask(self, byte_embs: Tensor):
         swt = self.byte_params.sliding_window_tokens
         bpt = self.byte_params.bytes_per_token
@@ -304,7 +303,7 @@ class ByteSelfAttn(nn.Module):
             Q_LEN=T,
             KV_LEN=T,
         ) if self.byte_params.use_byte_self_attn else None
-    
+
     def forward(self, byte_embs: Tensor) -> Tensor:
         self.update_block_mask(byte_embs)
         if self.byte_params.use_byte_self_attn:
@@ -477,7 +476,7 @@ class GPT(nn.Module):
         def causal_mask(b, h, q_idx, kv_idx):
             return q_idx >= kv_idx
         
-        T = toks_in.size(-2)
+        T = toks_in.size(-1)
         self.block_mask = create_block_mask(
             mask_mod=causal_mask,
             B=None,
