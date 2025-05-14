@@ -1074,6 +1074,7 @@ class MoTModel(LM):
     def __init__(self, name: str, **kwargs) -> None:
         assert os.getenv("HF_TOKEN") is not None, "Please set the HF_TOKEN environment variable."
         super().__init__()
+        torch.set_float32_matmul_precision('high')
         self.name = name
         bh, _ = parse_name_to_hyperparams(name)
         self.model = torch.compile(load_model(name).cuda()).eval()
