@@ -1007,10 +1007,14 @@ def loglikelihood__tokens_out(model: GPT, ttb: TokensToBytes, requests: list[Ins
         query = request.args[0]
         targets = request.args[1]
 
-        toks_in, _, _ = ttb(torch.tensor(enc.encode(query)))
-        len_in = len(toks_in)
+        len_in = len(enc.encode(query))
         
-        toks, bytes_padded, bytes_pulled = ttb(torch.tensor(enc.encode(query + targets)))
+        toks_in, bytes_padded_in, bytes_pulled_in = ttb(torch.tensor(enc.encode(query)))
+        toks_out, bytes_padded_out, bytes_pulled_out = ttb(torch.tensor(enc.encode(targets)))
+        toks = torch.cat([toks_in, toks_out], dim=-1)
+        bytes_padded = torch.cat([bytes_padded_in, bytes_padded_out], dim=-1)
+        bytes_pulled = torch.cat([bytes_pulled_in, bytes_pulled_out], dim=-1)
+
         logits: Tensor = model(toks, bytes_padded, bytes_pulled)
         logits = logits.squeeze()[len_in-1:-1]  # teacher-forced predictions of targets
         is_greedy = torch.all(logits.argmax(dim=-1) == torch.tensor(enc.encode(targets)))
@@ -1027,8 +1031,7 @@ def loglikelihood_rolling__tokens_out(model: GPT, ttb: TokensToBytes, requests: 
         query = request.args[0]
         targets = request.args[1]
 
-        toks_out, _, _ = ttb(torch.tensor(enc.encode(targets)))
-        len_out = len(toks_out)
+        len_out = len(enc.encode(targets))
 
         text = query
         loglikelihood = 0.0
