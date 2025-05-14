@@ -1020,7 +1020,7 @@ def loglikelihood__tokens_out(model: GPT, ttb: TokensToBytes, requests: list[Ins
         logits: Tensor = model(toks, bytes_padded, bytes_pulled)
         logits = logits.squeeze()[len_in-1:-1]  # teacher-forced predictions of targets
         is_greedy = torch.all(logits.argmax(dim=-1) == torch.tensor(enc.encode(targets), device="cuda"))
-        lls = F.log_softmax(logits, dim=-1).gather(1, torch.tensor(enc.encode(targets), device="cuda").unsqueeze(0)).squeeze()
+        lls = F.log_softmax(logits, dim=-1).gather(1, torch.tensor(enc.encode(targets), device="cuda").unsqueeze(0)).squeeze().tolist()
         results.append((lls, is_greedy))
     return results
 
@@ -1044,7 +1044,7 @@ def loglikelihood_rolling__tokens_out(model: GPT, ttb: TokensToBytes, requests: 
             logits = logits.squeeze()[-1]
             lls = F.log_softmax(logits, dim=-1)
             target = torch.tensor(enc.encode(targets)[idx], device="cuda")
-            loglikelihood += lls[target]
+            loglikelihood += lls[target].item()
             next_token = sampler(logits)
             text += enc.decode([next_token])
         results.append((loglikelihood,))
