@@ -1082,7 +1082,7 @@ class MoTModel(LM):
 
     def generate_until(self, requests: list[Instance]) -> list[str]:
         if self.toks_out:
-            return generate_until__tokens_out(self.model, self.ttb, requests)
+            return generate_until__tokens_out(self.model, self.ttb, requests, self.sampler)
         else:
             raise NotImplementedError("Sampling for byte-outputs not yet implemented")
 
