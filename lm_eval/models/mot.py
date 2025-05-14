@@ -1012,8 +1012,8 @@ def loglikelihood__tokens_out(model: GPT, ttb: TokensToBytes, requests: list[Ins
         toks_in, bytes_padded_in, bytes_pulled_in = ttb(torch.tensor(enc.encode(query)))
         toks_out, bytes_padded_out, bytes_pulled_out = ttb(torch.tensor(enc.encode(targets)))
         toks = torch.cat([toks_in, toks_out], dim=-1)
-        bytes_padded = torch.cat([bytes_padded_in, bytes_padded_out], dim=-1)
-        bytes_pulled = torch.cat([bytes_pulled_in, bytes_pulled_out], dim=-1)
+        bytes_padded = torch.cat([bytes_padded_in, bytes_padded_out], dim=-1) if bytes_padded_in is not None else None
+        bytes_pulled = torch.cat([bytes_pulled_in, bytes_pulled_out], dim=-1) if bytes_pulled_in is not None else None
 
         logits: Tensor = model(toks, bytes_padded, bytes_pulled)
         logits = logits.squeeze()[len_in-1:-1]  # teacher-forced predictions of targets
