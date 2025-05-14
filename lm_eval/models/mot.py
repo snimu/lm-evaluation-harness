@@ -797,6 +797,7 @@ class TokensToBytes:
         ttb_right_pad = make_embedding(f"ttb_{bpt}_right_pad.json", vocab_size).to(device) if byte_params.byte_mixin_method != "noop" and byte_params.padding_in == "right" else None
 
         ttb_in = ttb_left_pad if byte_params.padding_in == "left" else ttb_right_pad
+        ttb_in = ttb_in.to(device)
 
         pull_kwargs = dict(bytes_per_token=bpt, pad_byte=456, eot_byte=457)
         pull_in = functools.partial(pull_from_left, **pull_kwargs) if byte_params.padding_in == "left" else functools.partial(pull_from_right, **pull_kwargs)
@@ -829,10 +830,11 @@ class TokensToBytes:
             (True, False): _create_data_from_toks_TF,
             (False, False): _create_data_from_toks_FF,
         }[(byte_params.byte_mixin_method != "noop", byte_params.pull_in)]
+        self.device = device
 
     @torch.no_grad()
     def __call__(self, tokens: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        return self.create_data_from_toks(tokens)
+        return self.create_data_from_toks(tokens.to(self.device))
 
 
 # -----------------------------------------------------------------------------
