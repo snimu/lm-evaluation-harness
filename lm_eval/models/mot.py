@@ -12,12 +12,14 @@ from typing import Literal
 import einops
 
 #torch._inductor.config.coordinate_descent_tuning = True # we have banned this flag for new records because it causes compilation to take 30min
-import safetensors.torch
 import tiktoken
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 import torch
+torch.empty(1, device="cuda", requires_grad=True).backward() # prevents a bug on some systems
 import torch.nn.functional as F
-from huggingface_hub import hf_hub_download
 from torch import Tensor, nn
+import safetensors.torch
+from huggingface_hub import hf_hub_download
 
 # use of FlexAttention contributed by @KoszarskyB
 from torch.nn.attention.flex_attention import (
