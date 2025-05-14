@@ -524,7 +524,7 @@ class GPT(nn.Module):
 
 
 def load_ttb(filename: str) -> dict[int, list[int]]:
-    path = Path(os.path.abspath(__file__)) / ".." / "embeddings" / filename
+    path = Path(os.path.abspath(__file__).replace("/mot.py", "")) / "embeddings" / filename
     with open(path, "r") as f:
         text = f.read()
     ttb = json.loads(text)
