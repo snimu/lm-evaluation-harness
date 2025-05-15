@@ -957,7 +957,7 @@ def load_model(name: str) -> GPT:
         vocab_size=50257,
         num_layers=16,
         num_heads=8,
-        max_seq_len=1024,
+        max_seq_len=1024*2,  # else I get an error in Rotary
         model_dims=md,
         byte_params=bh,
     )
