@@ -90,7 +90,7 @@ class Rotary(nn.Module):
         self.sin = nn.Buffer(theta.sin(), persistent=False)
 
     def forward(self, x_BTHD: Tensor):
-        assert self.cos.size(0) >= x_BTHD.size(-3)
+        assert self.cos.size(0) >= x_BTHD.size(-3), f"{self.cos.shape=}, {x_BTHD.shape=}"
         cos, sin = self.cos[None, :x_BTHD.size(-3), None, :], self.sin[None, :x_BTHD.size(-3), None, :]
         x1, x2 = x_BTHD.to(dtype=torch.float32).chunk(2, dim=-1)
         y1 = x1 * cos + x2 * sin
@@ -394,7 +394,7 @@ class ByteMixoutCopy(nn.Module):
 class ByteMixoutSplit(nn.Module):
     def __init__(self, dims: ModelDims, max_seq_len: int, byte_params: ByteHyperparameters):
         super().__init__()
-        assert dims.model_dim % byte_params.bytes_per_token == 0
+        assert dims.model_dim % byte_params.bytes_per_token == 0, f"{dims.model_dim=}, {byte_params.bytes_per_token=}"
         self.attention_layers = nn.ModuleList([
             ByteSelfAttn(
                 dims.model_dim // byte_params.bytes_per_token,
@@ -812,21 +812,21 @@ class TokensToBytes:
         bpt = byte_params.bytes_per_token
         def _create_data_from_toks_TT(toks: Tensor):
             toks = toks.unsqueeze(0) if toks.ndim == 1 else toks
-            assert toks.ndim == 2
+            assert toks.ndim == 2, f"{toks.shape=}"
             bytes_padded_in = tokens_to_bytes(toks, ttb_in)
             bytes_pulled_in = pull_in(bytes_padded_in)
             return toks, bytes_padded_in, bytes_pulled_in
 
         def _create_data_from_toks_TF(toks: Tensor):
             toks = toks.unsqueeze(0) if toks.ndim == 1 else toks
-            assert toks.ndim == 2
+            assert toks.ndim == 2, f"{toks.shape=}"
             bytes_padded_in = tokens_to_bytes(toks, ttb_in)
             bytes_pulled_in = None
             return toks, bytes_padded_in, bytes_pulled_in
 
         def _create_data_from_toks_FF(toks: Tensor):
             toks = toks.unsqueeze(0) if toks.ndim == 1 else toks
-            assert toks.ndim == 2
+            assert toks.ndim == 2, f"{toks.shape=}"
             bytes_padded_in = None
             bytes_pulled_in = None
             return toks, bytes_padded_in, bytes_pulled_in
