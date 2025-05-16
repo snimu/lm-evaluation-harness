@@ -959,7 +959,7 @@ def load_model(name: str) -> GPT:
         vocab_size=50257,
         num_layers=16,
         num_heads=8,
-        max_seq_len=1024*2,  # else I get an error in Rotary
+        max_seq_len=4096,  # else I get an error in Rotary
         model_dims=md,
         byte_params=bh,
     )
@@ -972,15 +972,130 @@ def load_model(name: str) -> GPT:
 
 
 class SamplerTokens:
-    def __init__(self):
-        self.eot_token_id = 50256
+    def __init__(self, temperature: float = 0.0, eot_token_id: int = 50256, eps: float = 1e-4):
+        assert temperature >= 0.0
+        self.temperature = temperature
+        self.eot_token_id = eot_token_id
+        self.eps = eps
 
     def sample_argmax(self, logits: Tensor) -> Tensor:
         return torch.argmax(logits, dim=-1)
+    
+    def sample_temperature(self, logits: Tensor) -> Tensor:
+        return torch.multinomial(F.softmax(logits / self.temperature, dim=-1), num_samples=1)
 
     def __call__(self, logits: Tensor) -> Tensor:
         logits[..., self.eot_token_id] = -float("inf")
-        return self.sample_argmax(logits)
+        return self.sample_argmax(logits) if self.temperature < self.eps else self.sample_temperature(logits)
+
+
+class SamplerBytes:
+    def __init__(
+            self,
+            n: int,
+            temperature: float = 0.0,
+            pad_byte: int = 456,
+            eot_byte: int = 457,
+            bpt: int = 16,
+            eps: float = 1e-4,
+    ):
+        assert temperature >= 0.0
+        self.temperature = temperature
+        self.n = n
+        self.pad_byte = pad_byte
+        self.eot_byte = eot_byte
+        self.bpt = bpt
+        self.eps = eps
+
+    def sample_argmax(self, logits: Tensor) -> Tensor:
+        return torch.argmax(logits, dim=-1)[:, :self.n]
+
+    def sample_temperature(self, logits: Tensor) -> Tensor:
+        """
+        I have an LLM that predicts bpt bytes at once, and I would like to sample it with temperature in a sensible manner.
+        For this, I will assume that the most likely byte at position n is connected to the most likely byte in position n+1;
+        the same for the second most likely one, and so on.
+        In other words, I assume that the "probability bands" through the bytes
+        represent all the legitimate paths through the byte probabilities.
+
+        So to sample them, I first need to identify the ordering of the bytes at each position.
+        Then, I need to find some probability of each byte sequence so that I can sample them.
+        So to determine the probability of sampling the nth most likely byte at each position,
+        I take the sum over the probability of the nth most likely byte at each position, over all positions.
+        Then I divide that number by the temperature, and take the softmax.
+        I sample from the resulting distribution to get the index I want;
+        but this isn't a byte index, it's a probability index!
+        In my last step, I take the index--let's say it's 3--and identify the 3rd most likely byte index at each position.
+        Then, I return that tensor.
+
+        This function has (obviously) been aided by Gemini; I'm keeping (some of) the comments.
+        """
+        sample_logits = logits.clone()[:, :self.n, :]
+
+        if self.n == 1:
+            squeezed_logits = sample_logits.squeeze(1) # Shape: [batch_size, vocab_size]
+            probs = F.softmax(squeezed_logits / self.temperature, dim=-1)
+            sampled_indices = torch.multinomial(probs, num_samples=1) # Shape: [batch_size, 1]
+            sampled_indices = einops.rearrange(sampled_indices, "B I -> B 1 I")  # keep the byte seq dim
+            return sampled_indices
+        else:
+            # Implement the "probability bands" logic for self.n > 1 positions
+
+            # 1. Get original probabilities (before temperature scaling) at each of the self.n positions
+            # probs_at_positions shape: [batch_size, self.n, vocab_size]
+            probs_at_positions = F.softmax(sample_logits, dim=-1)
+
+            # 2. For each position, sort bytes by their original probabilities
+            # sorted_original_probs[b, pos, k]: probability of the k-th most likely byte at (b, pos)
+            # sorted_byte_indices[b, pos, k]: index (byte value) of the k-th most likely byte at (b, pos)
+            # Both shapes: [batch_size, self.n, vocab_size]
+            sorted_original_probs, sorted_byte_indices = torch.sort(probs_at_positions, dim=-1, descending=True)
+
+            # 3. Calculate a score for each "probability band" (rank k)
+            # The score for the k-th band is the sum of probabilities of the k-th most likely bytes
+            # across all self.n positions.
+            # path_scores[b, k] = sum_{pos=0}^{self.n-1} sorted_original_probs[b, pos, k]
+            # Summing across dim=1 (the 'self.n' dimension, which is the position dimension here)
+            path_scores = torch.sum(sorted_original_probs, dim=1)
+            # path_scores shape: [batch_size, vocab_size]
+
+            # 4. Apply temperature to these path scores and compute sampling probabilities for bands
+            # If temperature is very low, this will strongly favor bands with high summed original probabilities.
+            # If temperature is high, band selection becomes more random.
+            path_distribution_logits = path_scores / self.temperature
+            path_choice_probs = F.softmax(path_distribution_logits, dim=-1)
+            # path_choice_probs shape: [batch_size, vocab_size]
+
+            # 5. Sample a "probability band" index (a rank k) for each item in the batch
+            # sampled_path_rank[b, 0] will be the chosen rank k for batch item b (e.g., 0 for most likely band, 1 for second, etc.)
+            sampled_path_rank = torch.multinomial(path_choice_probs, num_samples=1)
+            # sampled_path_rank shape: [batch_size, 1]
+
+            # 6. Construct the output sequence using the chosen rank
+            # For each batch item b and position pos, we need the byte corresponding to
+            # the sampled_path_rank[b,0]-th most likely byte.
+            # This byte is sorted_byte_indices[b, pos, sampled_path_rank[b,0]].
+            # We use torch.gather for this.
+            # `sampled_path_rank` needs to be expanded to match the dimensions for gather.
+            # Target shape for index in gather: [batch_size, self.n, 1] (to pick one from vocab_size dim of sorted_byte_indices)
+            expanded_rank_for_gather = sampled_path_rank.unsqueeze(1).expand(-1, self.n, -1)
+            # expanded_rank_for_gather shape: [batch_size, self.n, 1]
+
+            output_bytes = torch.gather(sorted_byte_indices, dim=2, index=expanded_rank_for_gather)
+            # output_bytes shape: [batch_size, self.n, 1]
+
+            # Remove the last dimension
+            output_bytes = output_bytes.squeeze(-1)
+            # output_bytes shape: [batch_size, self.n]
+
+            return output_bytes
+
+    def __call__(self, logits: Tensor) -> Tensor:
+        assert logits.ndim == 3
+        assert logits.shape[1] == self.bpt
+        logits[..., self.pad_byte] = -float("inf")
+        logits[..., self.eot_byte] = -float("inf")
+        return self.sample_argmax(logits) if self.temperature < self.eps else self.sample_temperature(logits)
 
 
 @torch.inference_mode()
