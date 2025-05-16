@@ -283,7 +283,6 @@ class ByteSelfAttn(nn.Module):
             head_dim=128,
         ) if byte_params.use_byte_self_attn else nn.Identity()
 
-    def update_block_mask(self, byte_embs: Tensor):
         swt = self.byte_params.sliding_window_tokens
         bpt = self.byte_params.bytes_per_token
 
@@ -297,19 +296,21 @@ class ByteSelfAttn(nn.Module):
             sliding_window = q_idx - kv_idx < swt * bpt
             return block_causality & sliding_window
         
-        T = byte_embs.size(-2)
-        self.block_mask = create_block_mask(
-            mask_mod=sliding_window_block_causal_mask if self.mix_byte_in_tok else sliding_window_causal_mask,
-            B=None,
-            H=None,
-            Q_LEN=T,
-            KV_LEN=T,
-        ) if self.byte_params.use_byte_self_attn else None
+        self.block_masks = [
+            create_block_mask(
+                mask_mod=sliding_window_block_causal_mask if self.mix_byte_in_tok else sliding_window_causal_mask,
+                B=None,
+                H=None,
+                Q_LEN=(T+1)*bpt,
+                KV_LEN=(T+1)*bpt,
+            )
+            for T in range(2048)
+        ] if self.byte_params.use_byte_self_attn else None
 
     def forward(self, byte_embs: Tensor) -> Tensor:
-        self.update_block_mask(byte_embs)
+        T = byte_embs.size(-2) // self.byte_params.bytes_per_token
         if self.byte_params.use_byte_self_attn:
-            byte_embs = byte_embs + self.attention(byte_embs, None, self.block_mask)
+            byte_embs = byte_embs + self.attention(byte_embs, None, self.block_masks[T-1])
         return byte_embs
 
 
@@ -474,18 +475,19 @@ class GPT(nn.Module):
         assert num_layers % 2 == 0
         self.skip_weights = nn.Parameter(torch.ones(num_layers//2))
 
-    def update_blockmask(self, toks_in: Tensor):
         def causal_mask(b, h, q_idx, kv_idx):
             return q_idx >= kv_idx
         
-        T = toks_in.size(-1)
-        self.block_mask = create_block_mask(
-            mask_mod=causal_mask,
-            B=None,
-            H=None,
-            Q_LEN=T,
-            KV_LEN=T,
-        )
+        self.block_masks = [
+            create_block_mask(
+                mask_mod=causal_mask,
+                B=None,
+                H=None,
+                Q_LEN=T,
+                KV_LEN=T,
+            )
+            for T in range(2048)
+        ]
 
     def forward(
             self,
@@ -493,7 +495,7 @@ class GPT(nn.Module):
             bytes_padded_in: Tensor | None,
             bytes_pulled_in: Tensor | None,
     ):
-        self.update_blockmask(toks_in)
+        T = toks_in.size(1)
         ve = [value_embed(toks_in) for value_embed in self.value_embeds]
         # 012 ... 012 structure on token value embeddings by @YouJiacheng, improved on @leloykun's U-net structure
         ve = [ve[0], ve[1], ve[2]] + [None] * (len(self.blocks) - 6) + [ve[0], ve[1], ve[2]]
@@ -508,7 +510,7 @@ class GPT(nn.Module):
         for i in range(len(self.blocks)):
             if i >= n:
                 x = x + self.skip_weights[i - n] * skip_connections.pop()
-            x = self.blocks[i](x, ve[i], x0, self.block_mask)
+            x = self.blocks[i](x, ve[i], x0, self.block_masks[T-1])
             if i < n:
                 skip_connections.append(x)
 
