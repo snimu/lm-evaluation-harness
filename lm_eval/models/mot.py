@@ -483,8 +483,8 @@ class GPT(nn.Module):
                 mask_mod=causal_mask,
                 B=None,
                 H=None,
-                Q_LEN=T,
-                KV_LEN=T,
+                Q_LEN=T+1,
+                KV_LEN=T+1,
             )
             for T in range(2048)
         ]
