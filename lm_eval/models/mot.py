@@ -801,6 +801,7 @@ class TokensToBytes:
             vocab_size: int = 50257,
             device: torch.device = "cpu",
     ):
+        self.byte_params = byte_params
         bpt = byte_params.bytes_per_token
         ttb_left_pad = make_embedding(f"ttb_{bpt}_left_pad.json", vocab_size).to(device) if byte_params.byte_mixin_method != "noop" and byte_params.padding_in == "left" else None
         ttb_right_pad = make_embedding(f"ttb_{bpt}_right_pad.json", vocab_size).to(device) if byte_params.byte_mixin_method != "noop" and byte_params.padding_in == "right" else None
@@ -840,11 +841,28 @@ class TokensToBytes:
             (False, False): _create_data_from_toks_FF,
         }[(byte_params.byte_mixin_method != "noop", byte_params.pull_in)]
         self.device = device
+        self._int_to_bytes = None
 
     @torch.no_grad()
     def __call__(self, tokens: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         return self.create_data_from_toks(tokens.to(self.device))
-
+    
+    @property
+    def int_to_bytes(self):
+        if self._int_to_bytes is not None:
+            return self._int_to_bytes
+        
+        with open("embeddings/int_to_byte.json", "r") as f:
+            self._int_to_bytes = json.loads(f.read())
+        return self._int_to_bytes
+    
+    @torch.no_grad()
+    def bytes_to_string(self, bytes: Tensor) -> str:
+        assert self.byte_params.byte_mixout_method != "noop"
+        bytes = bytes.squeeze()
+        assert bytes.ndim == 1
+        bytes = bytes.tolist()
+        return "".join([self.int_to_bytes[b] for b in bytes])
 
 # -----------------------------------------------------------------------------
 # Download model
@@ -1121,7 +1139,7 @@ def generate_until__tokens_out(model: GPT, ttb: TokensToBytes, requests: list[In
 
 
 @torch.inference_mode()
-def loglikelihood__tokens_out(model: GPT, ttb: TokensToBytes, requests: list[Instance]) -> list[tuple[float, bool]]:
+def loglikelihood__tokens_out(model: GPT, ttb: TokensToBytes, requests: list[Instance], sampler: SamplerTokens) -> list[tuple[float, bool]]:
     enc = tiktoken.encoding_for_model("gpt-2")
     results = []
     for request in requests:
@@ -1171,18 +1189,75 @@ def loglikelihood_rolling__tokens_out(model: GPT, ttb: TokensToBytes, requests: 
 
 
 @torch.inference_mode()
-def generate_until__bytes_out(model: GPT, ttb: TokensToBytes, requests: list[Instance]) -> list[str]:
-    pass
+def generate_until__bytes_out(model: GPT, ttb: TokensToBytes, requests: list[Instance], sampler: SamplerBytes) -> list[str]:
+    enc = tiktoken.encoding_for_model("gpt-2")
+    texts = []
+    for request in requests:
+        query = request.args[0]
+        max_toks = request.args[1].get("max_gen_toks", 1024 * 7 // sampler.n)  # ~7 bpt on avg
+        until = request.args[1].get("until", None)
+
+        toks, bytes_padded_in, bytes_pulled_in = ttb(torch.tensor(enc.encode(query), device="cuda"))
+        text = query
+        for i in range(max_toks):
+            logits = model(toks, bytes_padded_in, bytes_pulled_in).squeeze()[-sampler.bpt:]
+            bytes = sampler(logits)
+            text += ttb.bytes_to_string(bytes)
+            toks, bytes_padded_in, bytes_pulled_in = ttb(torch.tensor(enc.encode(text), device="cuda"))
+            if until and any(stop in text for stop in until):
+                break
+        texts.append(text)
+    return texts
 
 
 @torch.inference_mode()
-def loglikelihood__bytes_out(model: GPT, ttb: TokensToBytes, requests: list[Instance]) -> list[tuple[float, bool]]:
-    pass
+def loglikelihood__bytes_out(model: GPT, ttb: TokensToBytes, requests: list[Instance], sampler: SamplerBytes) -> list[tuple[float, bool]]:
+    enc = tiktoken.encoding_for_model("gpt-2")
+    results = []
+    for request in requests:
+        query = request.args[0]
+        targets = request.args[1]
+
+        len_in = len(enc.encode(query))
+        
+        toks_in, bytes_padded_in, bytes_pulled_in = ttb(torch.tensor(enc.encode(query), device="cuda"))
+        toks_out, bytes_padded_out, bytes_pulled_out = ttb(torch.tensor(enc.encode(targets), device="cuda"))
+        toks = torch.cat([toks_in, toks_out], dim=-1)
+        bytes_padded = torch.cat([bytes_padded_in, bytes_padded_out], dim=-1) if bytes_padded_in is not None else None
+        bytes_pulled = torch.cat([bytes_pulled_in, bytes_pulled_out], dim=-1) if bytes_pulled_in is not None else None
+
+        logits: Tensor = model(toks, bytes_padded, bytes_pulled)
+        logits = logits.squeeze()[(len_in-1)*sampler.bpt:-sampler.bpt]  # teacher-forced predictions of targets
+        is_greedy = torch.all(logits.argmax(dim=-1) == torch.tensor(enc.encode(targets), device="cuda"))
+        lls = F.log_softmax(logits, dim=-1).gather(1, torch.tensor(enc.encode(targets), device="cuda").unsqueeze(0)).sum().item()
+        results.append((lls, is_greedy))
+    return results
 
 
 @torch.inference_mode()
-def loglikelihood_rolling__bytes_out(model: GPT, ttb: TokensToBytes, requests: list[Instance]) -> list[tuple[float, bool]]:
-    pass
+def loglikelihood_rolling__bytes_out(model: GPT, ttb: TokensToBytes, requests: list[Instance], sampler: SamplerBytes) -> list[tuple[float, bool]]:
+    enc = tiktoken.encoding_for_model("gpt-2")
+    results = []
+    for request in requests:
+        query = request.args[0]
+        targets = request.args[1]
+
+        len_out = len(enc.encode(targets))
+
+        text = query
+        loglikelihood = 0.0
+        
+        for idx in range(len_out):  # TODO
+            toks, bytes_padded, bytes_pulled = ttb(torch.tensor(enc.encode(text), device="cuda"))
+            logits: Tensor = model(toks, bytes_padded, bytes_pulled)
+            logits = logits.squeeze()[-sampler.bpt:]
+            lls = F.log_softmax(logits, dim=-1)
+            target = torch.tensor(enc.encode(targets)[idx], device="cuda")
+            loglikelihood += lls[target].item()
+            next_token = sampler(logits)
+            text += enc.decode([next_token])
+        results.append((loglikelihood,))
+    return results
 
 
 # -----------------------------------------------------------------------------
@@ -1190,36 +1265,36 @@ def loglikelihood_rolling__bytes_out(model: GPT, ttb: TokensToBytes, requests: l
 
 
 class MoTModel(LM):
-    def __init__(self, name: str, **kwargs) -> None:
+    def __init__(self, name: str, temperature: float = 0.0, n: int = 1, **kwargs) -> None:
         assert os.getenv("HF_TOKEN") is not None, "Please set the HF_TOKEN environment variable."
         super().__init__()
         torch.set_float32_matmul_precision('high')
         self.name = name
         bh, _ = parse_name_to_hyperparams(name)
         self.model = torch.compile(load_model(name).cuda()).eval()
-        self.sampler = SamplerTokens()
+        self.sampler = SamplerTokens(temperature) if bh.byte_mixout_method == "noop" else SamplerBytes(n, temperature, bpt=bh.bytes_per_token)
         self.ttb = TokensToBytes(bh, device="cuda")
         self.toks_out = bh.byte_mixout_method == "noop"
 
     def loglikelihood(self, requests: list[Instance]) -> list[tuple[float, bool]]:
         if self.toks_out:
-            return loglikelihood__tokens_out(self.model, self.ttb, requests)
+            return loglikelihood__tokens_out(self.model, self.ttb, requests, self.sampler)
         else:
-            raise NotImplementedError("Sampling for byte-outputs not yet implemented")
+            return loglikelihood__bytes_out(self.model, self.ttb, requests, self.sampler)
 
 
     def loglikelihood_rolling(self, requests: list[Instance]) -> list[tuple[float, bool]]:
         if self.toks_out:
             return loglikelihood_rolling__tokens_out(self.model, self.ttb, requests, self.sampler)
         else:
-            raise NotImplementedError("Sampling for byte-outputs not yet implemented")
+            return loglikelihood_rolling__bytes_out(self.model, self.ttb, requests, self.sampler)
 
 
     def generate_until(self, requests: list[Instance]) -> list[str]:
         if self.toks_out:
             return generate_until__tokens_out(self.model, self.ttb, requests, self.sampler)
         else:
-            raise NotImplementedError("Sampling for byte-outputs not yet implemented")
+            return generate_until__bytes_out(self.model, self.ttb, requests, self.sampler)
 
 
 if "MoT" not in MODEL_REGISTRY:  # doing this as a decorator caused issues in the past.
