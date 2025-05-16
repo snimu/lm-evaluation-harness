@@ -304,7 +304,7 @@ class ByteSelfAttn(nn.Module):
                 Q_LEN=(T+1)*bpt,
                 KV_LEN=(T+1)*bpt,
             )
-            for T in range(2048)
+            for T in range(4096)
         ] if self.byte_params.use_byte_self_attn else None
 
     def forward(self, byte_embs: Tensor) -> Tensor:
@@ -486,7 +486,7 @@ class GPT(nn.Module):
                 Q_LEN=T+1,
                 KV_LEN=T+1,
             )
-            for T in range(2048)
+            for T in range(4096)
         ]
 
     def forward(
@@ -971,7 +971,7 @@ def load_model(name: str) -> GPT:
 # Sampling functions
 
 
-class Sampler:
+class SamplerTokens:
     def __init__(self):
         self.eot_token_id = 50256
 
@@ -984,7 +984,7 @@ class Sampler:
 
 
 @torch.inference_mode()
-def generate_until__tokens_out(model: GPT, ttb: TokensToBytes, requests: list[Instance], sampler: Sampler) -> list[str]:
+def generate_until__tokens_out(model: GPT, ttb: TokensToBytes, requests: list[Instance], sampler: SamplerTokens) -> list[str]:
     enc = tiktoken.encoding_for_model("gpt-2")
     texts = []
     for request in requests:
@@ -1030,7 +1030,7 @@ def loglikelihood__tokens_out(model: GPT, ttb: TokensToBytes, requests: list[Ins
 
 
 @torch.inference_mode()
-def loglikelihood_rolling__tokens_out(model: GPT, ttb: TokensToBytes, requests: list[Instance], sampler: Sampler) -> list[tuple[float, bool]]:
+def loglikelihood_rolling__tokens_out(model: GPT, ttb: TokensToBytes, requests: list[Instance], sampler: SamplerTokens) -> list[tuple[float, bool]]:
     enc = tiktoken.encoding_for_model("gpt-2")
     results = []
     for request in requests:
@@ -1082,7 +1082,7 @@ class MoTModel(LM):
         self.name = name
         bh, _ = parse_name_to_hyperparams(name)
         self.model = torch.compile(load_model(name).cuda()).eval()
-        self.sampler = Sampler()
+        self.sampler = SamplerTokens()
         self.ttb = TokensToBytes(bh, device="cuda")
         self.toks_out = bh.byte_mixout_method == "noop"
 
