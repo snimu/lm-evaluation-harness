@@ -38,7 +38,7 @@ def main():
         t0 = perf_counter()
         responses = model.generate_until([instance] * args.num_samples)
         t1 = perf_counter()
-        results = [{"query": query, "responses": responses}]
+        results = [{"query": query, "responses": responses, "time": t1-t0}]
         if args.to_file:
             if os.path.exists(args.to_file):
                 with open(args.to_file, "r") as f:
