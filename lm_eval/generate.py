@@ -55,7 +55,7 @@ def main():
                 f.write(json.dumps(results, indent=2))
         for response in results[-1]["responses"]:
             print("\n\n" + response)
-        print(f"\n\nIn {(t1-t0):.2f} seconds")
+        print(f"\n\nIn {sum(results[-1]['times']) / len(results[-1]['times']):.2f} seconds per generation.")
 
 
 if __name__ == "__main__":
