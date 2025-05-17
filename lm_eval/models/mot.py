@@ -1247,15 +1247,15 @@ def loglikelihood_rolling__bytes_out(model: GPT, ttb: TokensToBytes, requests: l
         text = query
         loglikelihood = 0.0
         
-        for idx in range(len_out):  # TODO
+        for idx in range(len_out):
             toks, bytes_padded, bytes_pulled = ttb(torch.tensor(enc.encode(text), device="cuda"))
             logits: Tensor = model(toks, bytes_padded, bytes_pulled)
-            logits = logits.squeeze()[-sampler.bpt:]
-            lls = F.log_softmax(logits, dim=-1)
-            target = torch.tensor(enc.encode(targets)[idx], device="cuda")
-            loglikelihood += lls[target].item()
-            next_token = sampler(logits)
-            text += enc.decode([next_token])
+            logits = logits[:, -sampler.bpt:]
+            lls = F.log_softmax(logits, dim=-1)[:, :sampler.n]
+            targets = ttb(torch.tensor(enc.encode(targets)[idx], device="cuda"))[:, :sampler.n]
+            loglikelihood += lls[targets].sum().item()
+            next_bytes = sampler(logits)
+            text += sampler.bytes_to_string(next_bytes)
         results.append((loglikelihood,))
     return results
 
