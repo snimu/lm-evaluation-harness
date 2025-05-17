@@ -30,7 +30,7 @@ def main():
             resps=[],
             filtered_resps={},
         )
-        responses = model.generate_until(instance)
+        responses = model.generate_until([instance])
         for response in responses:
             print(response)
 
