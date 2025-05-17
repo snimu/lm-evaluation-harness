@@ -2,7 +2,7 @@
 import argparse
 
 from lm_eval.api.instance import Instance
-from lm_eval.models.mot import MoT
+from lm_eval.models.mot import MoTModel
 
 
 def get_args() -> argparse.Namespace:
@@ -15,7 +15,7 @@ def get_args() -> argparse.Namespace:
 
 def main():
     args = get_args()
-    model = MoT(args.name, temperature=args.temperature)
+    model = MoTModel(args.name, temperature=args.temperature)
     while True:
         query = input("\n\n New, independent Query: ")
         if not query:
