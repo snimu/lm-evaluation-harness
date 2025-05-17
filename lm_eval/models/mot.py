@@ -1200,7 +1200,7 @@ def generate_until__bytes_out(model: GPT, ttb: TokensToBytes, requests: list[Ins
         toks, bytes_padded_in, bytes_pulled_in = ttb(torch.tensor(enc.encode(query), device="cuda"))
         text = query
         for i in range(max_toks):
-            logits = model(toks, bytes_padded_in, bytes_pulled_in).squeeze()[-sampler.bpt:]
+            logits = model(toks, bytes_padded_in, bytes_pulled_in)[:, -sampler.bpt:]
             bytes = sampler(logits)
             text += ttb.bytes_to_string(bytes)
             toks, bytes_padded_in, bytes_pulled_in = ttb(torch.tensor(enc.encode(text), device="cuda"))
