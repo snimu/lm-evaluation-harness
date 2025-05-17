@@ -1109,8 +1109,8 @@ class SamplerBytes:
             return output_bytes
 
     def __call__(self, logits: Tensor) -> Tensor:
-        assert logits.ndim == 3
-        assert logits.shape[1] == self.bpt
+        assert logits.ndim == 3, f"{logits.shape=}"
+        assert logits.shape[1] == self.bpt, f"{logits.shape=}, {self.bpt=}"
         logits[..., self.pad_byte] = -float("inf")
         logits[..., self.eot_byte] = -float("inf")
         return self.sample_argmax(logits) if self.temperature < self.eps else self.sample_temperature(logits)
