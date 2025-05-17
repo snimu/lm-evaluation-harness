@@ -42,7 +42,7 @@ def main():
         if args.to_file:
             if os.path.exists(args.to_file):
                 with open(args.to_file, "r") as f:
-                    results = json.load(f) + results
+                    results = json.loads(f.read()) + results
             with open(args.to_file, "w") as f:
                 f.write(json.dumps(results, indent=2))
         for response in responses:
