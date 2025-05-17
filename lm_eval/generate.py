@@ -1,5 +1,6 @@
 
 import argparse
+import json
 from time import perf_counter
 
 from lm_eval.api.instance import Instance
@@ -36,14 +37,12 @@ def main():
         t0 = perf_counter()
         responses = model.generate_until([instance] * args.num_samples)
         t1 = perf_counter()
+        results = {"query": query, "responses": responses}
         if args.to_file:
-            with open(args.to_file, "a") as f:
-                f.write(f"\n\nQuery: {query}")
+            with open(args.to_file, "w") as f:
+                f.write(json.dumps(results, indent=2))
         for response in responses:
             print("\n\n" + response)
-            if args.to_file:
-                with open(args.to_file, "a") as f:
-                    f.write(f"\n\nResponse: {response}\n\n")
         print(f"\n\nIn {(t1-t0):.2f} seconds")
 
 
