@@ -11,6 +11,7 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--name")
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--max-gen-toks", type=int, default=1024)
+    parser.add_argument("--to-file", type=str, default=None)
     return parser.parse_args()
 
 
@@ -32,11 +33,13 @@ def main():
             filtered_resps={},
         )
         t0 = perf_counter()
-        responses = model.generate_until([instance])
+        response = model.generate_until([instance]).pop()
         t1 = perf_counter()
-        for response in responses:
-            print(response)
-            print(f"\n\nIn {(t1-t0):.2f} seconds")
+        print(response)
+        print(f"\n\nIn {(t1-t0):.2f} seconds")
+        if args.to_file:
+            with open(args.to_file, "a") as f:
+                f.write(f"\n\nQuery: {query}\n\nResponse: {response}\n\n")
 
 
 if __name__ == "__main__":
