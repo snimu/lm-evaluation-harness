@@ -1,6 +1,7 @@
 
 import argparse
 import json
+import os
 from time import perf_counter
 
 from lm_eval.api.instance import Instance
@@ -37,8 +38,11 @@ def main():
         t0 = perf_counter()
         responses = model.generate_until([instance] * args.num_samples)
         t1 = perf_counter()
-        results = {"query": query, "responses": responses}
+        results = [{"query": query, "responses": responses}]
         if args.to_file:
+            if os.path.exists(args.to_file):
+                with open(args.to_file, "r") as f:
+                    results = json.load(f) + results
             with open(args.to_file, "w") as f:
                 f.write(json.dumps(results, indent=2))
         for response in responses:
