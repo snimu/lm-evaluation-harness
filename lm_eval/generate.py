@@ -1,5 +1,6 @@
 
 import argparse
+from time import perf_counter
 
 from lm_eval.api.instance import Instance
 from lm_eval.models.mot import MoTModel
@@ -30,9 +31,12 @@ def main():
             resps=[],
             filtered_resps={},
         )
+        t0 = perf_counter()
         responses = model.generate_until([instance])
+        t1 = perf_counter()
         for response in responses:
             print(response)
+            print(f"\n\nIn {(t1-t0):.2f} seconds")
 
 
 if __name__ == "__main__":
