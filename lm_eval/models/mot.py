@@ -1226,7 +1226,7 @@ def loglikelihood__bytes_out(model: GPT, ttb: TokensToBytes, requests: list[Inst
         bytes_padded = torch.cat([bytes_padded_in, bytes_padded_out], dim=-1) if bytes_padded_in is not None else None
         bytes_pulled = torch.cat([bytes_pulled_in, bytes_pulled_out], dim=-1) if bytes_pulled_in is not None else None
 
-        logits: Tensor = model(toks, bytes_padded, bytes_pulled)
+        logits: Tensor = model(toks, bytes_padded, bytes_pulled)  # TODO: compare in tokens instead of bytes???
         logits = logits.squeeze()[(len_in-1)*sampler.bpt:-sampler.bpt]  # teacher-forced predictions of targets
         is_greedy = torch.all(logits.argmax(dim=-1) == torch.tensor(enc.encode(targets), device="cuda"))
         lls = F.log_softmax(logits, dim=-1).gather(1, torch.tensor(enc.encode(targets), device="cuda").unsqueeze(0)).sum().item()
@@ -1255,7 +1255,7 @@ def loglikelihood_rolling__bytes_out(model: GPT, ttb: TokensToBytes, requests: l
             targets = ttb(torch.tensor(enc.encode(targets)[idx], device="cuda"))[:, :sampler.n]
             loglikelihood += lls[targets].sum().item()
             next_bytes = sampler(logits)
-            text += sampler.bytes_to_string(next_bytes)
+            text += ttb.bytes_to_string(next_bytes)
         results.append((loglikelihood,))
     return results
 
