@@ -20,13 +20,10 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--queries-file", type=str, default="queries.json")
     parser.add_argument("--num-samples", type=int, default=1)
     parser.add_argument("--tokens-in", type=int, nargs="+", default=None)
-    parser.add_argument("--tokens-out", type=int, nargs="+", default=None)
 
     args = parser.parse_args()
     if args.tokens_in is None:
         args.tokens_in = [20, 100, 500]
-    if args.tokens_out is None:
-        args.tokens_out = [20, 100, 500]
     return args
 
 

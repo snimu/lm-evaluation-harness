@@ -1134,7 +1134,7 @@ def generate_until__tokens_out(model: GPT, ttb: TokensToBytes, requests: list[In
             toks, bytes_padded_in, bytes_pulled_in = ttb(torch.tensor(enc.encode(text), device="cuda"))
             if until and any(stop in text for stop in until):
                 break
-        texts.append(text)
+        texts.append(text[len(query):])
     return texts
 
 
@@ -1206,7 +1206,7 @@ def generate_until__bytes_out(model: GPT, ttb: TokensToBytes, requests: list[Ins
             toks, bytes_padded_in, bytes_pulled_in = ttb(torch.tensor(enc.encode(text), device="cuda"))
             if until and any(stop in text for stop in until):
                 break
-        texts.append(text)
+        texts.append(text[len(query):])
     return texts
 
 
