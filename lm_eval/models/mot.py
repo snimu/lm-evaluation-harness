@@ -1195,7 +1195,7 @@ def generate_until__bytes_out(model: GPT, ttb: TokensToBytes, requests: list[Ins
     texts = []
     for request in requests:
         query = request.args[0]
-        max_toks = request.args[1].get("max_gen_toks", 1024 * 7 // sampler.n)  # ~7 bpt on avg
+        max_toks = request.args[1].get("max_gen_toks", 1024) * 7 // sampler.n  # ~7 bpt on avg
         until = request.args[1].get("until", None)
 
         toks, bytes_padded_in, bytes_pulled_in = ttb(torch.tensor(enc.encode(query), device="cuda"))
