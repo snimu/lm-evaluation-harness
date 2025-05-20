@@ -860,7 +860,7 @@ class TokensToBytes:
     @torch.no_grad()
     def bytes_to_string(self, bytes: Tensor) -> str:
         assert self.byte_params.byte_mixout_method != "noop", f"{self.byte_params.byte_mixout_method=}"
-        bytes = bytes.squeeze()
+        bytes = bytes.squeeze(0) if bytes.ndim == 2 else bytes
         assert bytes.ndim == 1, f"{bytes.shape=}"
         bytes = bytes.tolist()
         return "".join([self.int_to_bytes[b] for b in bytes])
