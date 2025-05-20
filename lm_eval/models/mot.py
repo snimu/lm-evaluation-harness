@@ -2,6 +2,7 @@
 Modified from https://github.com/KellerJordan/modded-nanogpt/blob/master/records/021425_GPT2MediumOptCoeffs/1baa66b2-bff7-4850-aced-d63885ffb4b6.txt
 """
 
+import copy
 import functools
 import json
 import os
@@ -1215,22 +1216,27 @@ def loglikelihood__bytes_out(model: GPT, ttb: TokensToBytes, requests: list[Inst
     enc = tiktoken.encoding_for_model("gpt-2")
     results = []
     for request in requests:
-        query = request.args[0]
-        targets = request.args[1]
+        toks_in = enc.encode(request.args[0])
+        toks_out = enc.encode(request.args[1])
+        toks = copy.deepcopy(toks_in)
 
-        len_in = len(enc.encode(query))
-        
-        toks_in, bytes_padded_in, bytes_pulled_in = ttb(torch.tensor(enc.encode(query), device="cuda"))
-        toks_out, bytes_padded_out, bytes_pulled_out = ttb(torch.tensor(enc.encode(targets), device="cuda"))
-        toks = torch.cat([toks_in, toks_out], dim=-1)
-        bytes_padded = torch.cat([bytes_padded_in, bytes_padded_out], dim=-1) if bytes_padded_in is not None else None
-        bytes_pulled = torch.cat([bytes_pulled_in, bytes_pulled_out], dim=-1) if bytes_pulled_in is not None else None
+        ll = 0.0
+        is_greedy = True
+        for idx in range(len(toks_out)):
+            toks.append(toks_out[idx])
+            tokens, bytes_padded, bytes_pulled = ttb(torch.tensor(toks, device="cuda"))
+            logits: Tensor = model(
+                tokens[:, -1:],
+                bytes_padded[:, -sampler.bpt:],
+                bytes_pulled[:, -sampler.bpt:],
+            )
+            targets_padded = bytes_padded[:, -sampler.bpt:]
+            targets_pulled = bytes_pulled[:, -sampler.bpt:]
+            targets = targets_padded[targets_padded == targets_pulled]
+            ll += F.log_softmax(logits[:, -sampler.bpt:], dim=-1).gather(1, targets).sum().item()
+            is_greedy = is_greedy and torch.all(logits.argmax(dim=-1) == targets)
+        results.append((ll, is_greedy))
 
-        logits: Tensor = model(toks, bytes_padded, bytes_pulled)  # TODO: compare in tokens instead of bytes???
-        logits = logits.squeeze()[(len_in-1)*sampler.bpt:-sampler.bpt]  # teacher-forced predictions of targets
-        is_greedy = torch.all(logits.argmax(dim=-1) == torch.tensor(enc.encode(targets), device="cuda"))
-        lls = F.log_softmax(logits, dim=-1).gather(1, torch.tensor(enc.encode(targets), device="cuda").unsqueeze(0)).sum().item()
-        results.append((lls, is_greedy))
     return results
 
 
