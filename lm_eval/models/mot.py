@@ -497,6 +497,7 @@ class GPT(nn.Module):
             bytes_pulled_in: Tensor | None,
     ):
         T = toks_in.size(1)
+        assert T <= 4096, f"{T=}"
         ve = [value_embed(toks_in) for value_embed in self.value_embeds]
         # 012 ... 012 structure on token value embeddings by @YouJiacheng, improved on @leloykun's U-net structure
         ve = [ve[0], ve[1], ve[2]] + [None] * (len(self.blocks) - 6) + [ve[0], ve[1], ve[2]]
@@ -1195,17 +1196,19 @@ def generate_until__bytes_out(model: GPT, ttb: TokensToBytes, requests: list[Ins
     texts = []
     for request in requests:
         query = request.args[0]
-        max_toks = request.args[1].get("max_gen_toks", 1024) * 7 // sampler.n  # ~7 bpt on avg
+        max_toks = request.args[1].get("max_gen_toks", 1024)
         until = request.args[1].get("until", None)
 
         toks, bytes_padded_in, bytes_pulled_in = ttb(torch.tensor(enc.encode(query), device="cuda"))
         text = query
-        for i in range(max_toks):
+        for i in range(max_toks * 7 // sampler.n):  # ~7 bpt on avg
             logits = model(toks, bytes_padded_in, bytes_pulled_in)[:, -sampler.bpt:]
             bytes = sampler(logits)
             text += ttb.bytes_to_string(bytes)
             toks, bytes_padded_in, bytes_pulled_in = ttb(torch.tensor(enc.encode(text), device="cuda"))
-            if until and any(stop in text for stop in until):
+            stop_toks_contained = until and any(stop in text for stop in until)
+            enough_toks = len(toks.squeeze().tolist()) >= max_toks
+            if stop_toks_contained or enough_toks:
                 break
         texts.append(text[len(query):])
     return texts
