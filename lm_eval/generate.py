@@ -20,6 +20,7 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--queries-file", type=str, default="queries.json")
     parser.add_argument("--num-samples", type=int, default=1)
     parser.add_argument("--tokens-in", type=int, nargs="+", default=None)
+    parser.add_argument("--n", type=int, default=1, help="only relevant when outputs are bytes")
 
     args = parser.parse_args()
     if args.tokens_in is None:
@@ -41,7 +42,7 @@ def make_instance(query: str, max_gen_toks: int) -> Instance:
 
 def main():
     args = get_args()
-    model = MoTModel(args.name, temperature=args.temperature)
+    model = MoTModel(args.name, temperature=args.temperature, n=args.n)
     print("Warming up...")
     model.generate_until([make_instance("Hello, my name is", 10)])
     queries = None
