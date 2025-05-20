@@ -853,7 +853,7 @@ class TokensToBytes:
         if self._int_to_bytes is not None:
             return self._int_to_bytes
         
-        with open("embeddings/int_to_byte.json", "r") as f:
+        with open(os.path.abspath(__file__).replace("/mot.py", "") + "/embeddings/int_to_byte.json", "r") as f:
             self._int_to_bytes = json.loads(f.read())
         return self._int_to_bytes
     
