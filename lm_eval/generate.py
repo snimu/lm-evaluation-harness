@@ -119,11 +119,14 @@ def loss_pplx(
     tokens = [toks[:num_tokens] for toks in tokens if len(toks) >= num_tokens]
     tokens = torch.tensor(tokens, device="cuda", requires_grad=False)
     for model_name in model_names:
+        print(model_name)
         model = MoTModel(model_name)
-        for ds_name in dataset_names:
+        loop = tqdm(dataset_names)
+        for ds_name in loop:
             dataloader = dataset_generator(enc, ds_name, batch_size, num_tokens)
             losses = []
-            for batch in dataloader:
+            for batch_num, batch in enumerate(dataloader):
+                loop.set_description(f"{model_name} on {ds_name}; batch {batch_num}")
                 loss, pplx = model.batch_loss_pplx(batch)
                 losses.append(loss)
 
