@@ -92,7 +92,7 @@ def dataset_generator(
         ds = load_dataset("wikimedia/wikipedia", "20231101.en", streaming=True)
         buffer = []
         tokens = []
-        for item in ds:
+        for item in ds.iter_rows():
             text = item["text"]
             buffer.append(text)
             if len(buffer) >= batch_size - len(tokens):
