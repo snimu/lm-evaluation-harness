@@ -110,15 +110,11 @@ def loss_pplx(
         model_names: list[str],
         dataset_names: list[str],
         enc: tiktoken.Encoding,
-        texts: list[str],
         num_tokens: int = 1024,
         batch_size: int = 64,
         to_file_csv: str = "losses_pplxs.csv",
 ):
     results = {"model": [], "dataset": [], "loss": [], "perplexity": []}
-    tokens = enc.encode_batch(texts, disallowed_special=[])
-    tokens = [toks[:num_tokens] for toks in tokens if len(toks) >= num_tokens]
-    tokens = torch.tensor(tokens, device="cuda", requires_grad=False)
     for model_name in model_names:
         print(model_name)
         model = MoTModel(model_name)
