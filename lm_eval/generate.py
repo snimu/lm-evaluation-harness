@@ -19,6 +19,7 @@ from lm_eval.models.mot import MoTModel
 def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", nargs="+")
+    parser.add_argument("--generate", action="store_true")
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--max-gen-toks", type=int, default=600)
     parser.add_argument("--to-file", type=str, default=None)
