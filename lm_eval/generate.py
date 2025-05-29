@@ -90,6 +90,7 @@ def dataset_generator(
 ) -> Generator[None, None, torch.Tensor]:
     if ds_name == "wikipedia":
         ds = load_dataset("wikimedia/wikipedia", "20231101.en", split="train")
+        print(f"Loading Wikipedia dataset with {len(ds):_} samples")
         buffer = []
         tokens = []
         for item in ds:
@@ -127,8 +128,8 @@ def loss_pplx(
                 losses.append(loss)
                 loop.set_description(
                     f"batch {batch_num}, "
-                    f"loss={np.mean(losses):.2f}, "
-                    f"pplx={(np.exp(np.mean(losses))):.2f}")
+                    f"loss={np.mean(losses):.4f}, "
+                    f"pplx={(np.exp(np.mean(losses))):.4f}")
 
             loss = np.mean(losses)
             pplx = np.exp(loss)
