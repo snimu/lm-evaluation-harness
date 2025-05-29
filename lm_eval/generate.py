@@ -32,6 +32,8 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--num-tokens", type=int, default=1024)
 
     args = parser.parse_args()
+    if args.to_file is None:
+        args.to_file = "generations.json" if args.generate else "losses_pplxs.csv"
     args.name = [args.name] if isinstance(args.name, str) else args.name
     if args.tokens_in is None:
         args.tokens_in = [20, 100, 500]
