@@ -1125,9 +1125,9 @@ def batch_loss_pplx(
         ttb: TokensToBytes,
 ) -> tuple[float, float]:
     toks_in, toks_out = tokens[:, :-1], tokens[:, 1:]
-    toks_in, bytes_padded_in, bytes_pulled_in = ttb(toks_in.tolist(), device="cuda")
+    toks_in, bytes_padded_in, bytes_pulled_in = ttb(toks_in)
     logits = model(toks_in, bytes_padded_in, bytes_pulled_in)
-    loss = F.cross_entropy(logits.view(-1, logits.size(-1)), toks_out.view(-1), reduction="mean")
+    loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), toks_out.reshape(-1).long(), reduction="mean")
     pplx = torch.exp(loss)
     return loss.item(), pplx.item()
 

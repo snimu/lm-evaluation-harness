@@ -89,10 +89,10 @@ def dataset_generator(
         num_tokens: int = 1024,
 ) -> Generator[None, None, torch.Tensor]:
     if ds_name == "wikipedia":
-        ds = load_dataset("wikimedia/wikipedia", "20231101.en", streaming=True)
+        ds = load_dataset("wikimedia/wikipedia", "20231101.en", split="train")
         buffer = []
         tokens = []
-        for item in ds.iter_rows():
+        for item in ds:
             text = item["text"]
             buffer.append(text)
             if len(buffer) >= batch_size - len(tokens):
@@ -123,9 +123,12 @@ def loss_pplx(
             dataloader = dataset_generator(enc, ds_name, batch_size, num_tokens)
             losses = []
             for batch_num, batch in enumerate(dataloader):
-                loop.set_description(f"{model_name} on {ds_name}; batch {batch_num}")
-                loss, pplx = model.batch_loss_pplx(batch)
+                loss, _ = model.batch_loss_pplx(batch)
                 losses.append(loss)
+                loop.set_description(
+                    f"batch {batch_num}, "
+                    f"loss={np.mean(losses):.2f}, "
+                    f"pplx={(np.exp(np.mean(losses))):.2f}")
 
             loss = np.mean(losses)
             pplx = np.exp(loss)
