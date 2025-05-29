@@ -119,11 +119,13 @@ def loss_pplx(
     for model_name in model_names:
         print(model_name)
         model = MoTModel(model_name)
-        loop = tqdm(dataset_names)
-        for ds_name in loop:
+        for ds_name in dataset_names:
+            print(ds_name)
+            num_batches = 17928 if (ds_name == "wikipedia" and num_tokens == 1024 and batch_size == 64) else 17928 * 2
             dataloader = dataset_generator(enc, ds_name, batch_size, num_tokens)
             losses = []
-            for batch_num, batch in enumerate(dataloader):
+            loop = tqdm(dataloader, total=num_batches)
+            for batch_num, batch in enumerate(loop):
                 loss, _ = model.batch_loss_pplx(batch)
                 losses.append(loss)
                 loop.set_description(
@@ -138,8 +140,8 @@ def loss_pplx(
             results["loss"] = loss
             results["pplx"] = pplx
             print(f"{model_name} on {ds_name}: {loss=:.2f}, {pplx=:.2f}")
-    df = pl.DataFrame(results)
-    df.write_csv(to_file_csv)
+            df = pl.DataFrame(results)
+            df.write_csv(to_file_csv)
 
 
 def main():
