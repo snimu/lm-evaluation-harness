@@ -46,6 +46,7 @@ dependencies = [
     "tqdm",
     "wandb",
     "safetensors",
+    "polars",
 ]
 
 [tool.setuptools.packages.find]

@@ -1119,6 +1119,20 @@ class SamplerBytes:
 
 
 @torch.inference_mode()
+def batch_loss_pplx(
+        model: GPT,
+        tokens: Tensor,
+        ttb: TokensToBytes,
+) -> tuple[float, float]:
+    toks_in, toks_out = tokens[:, :-1], tokens[:, 1:]
+    toks_in, bytes_padded_in, bytes_pulled_in = ttb(toks_in.tolist(), device="cuda")
+    logits = model(toks_in, bytes_padded_in, bytes_pulled_in)
+    loss = F.cross_entropy(logits.view(-1, logits.size(-1)), toks_out.view(-1), reduction="mean")
+    pplx = torch.exp(loss)
+    return loss.item(), pplx.item()
+
+
+@torch.inference_mode()
 def generate_until__tokens_out(model: GPT, ttb: TokensToBytes, requests: list[Instance], sampler: SamplerTokens) -> list[str]:
     enc = tiktoken.encoding_for_model("gpt-2")
     texts = []
@@ -1304,6 +1318,12 @@ class MoTModel(LM):
             return generate_until__tokens_out(self.model, self.ttb, requests, self.sampler)
         else:
             return generate_until__bytes_out(self.model, self.ttb, requests, self.sampler)
+
+    def batch_loss_pplx(self, tokens: Tensor) -> tuple[float, float]:
+        if self.toks_out:
+            return batch_loss_pplx(self.model, tokens, self.ttb)
+        else:
+            raise NotImplementedError("batch_loss_pplx not implemented for bytes out")
 
 
 if "MoT" not in MODEL_REGISTRY:  # doing this as a decorator caused issues in the past.
