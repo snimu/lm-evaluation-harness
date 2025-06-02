@@ -137,10 +137,10 @@ def loss_pplx(
 
             loss = np.mean(losses)
             pplx = np.exp(loss)
-            results["model"] = model_name
-            results["dataset"] = ds_name
-            results["loss"] = loss
-            results["pplx"] = pplx
+            results["model"].append(model_name)
+            results["dataset"].append(ds_name)
+            results["loss"].append(loss)
+            results["pplx"].append(pplx)
             print(f"{model_name} on {ds_name}: {loss=:.2f}, {pplx=:.2f}")
             df = pl.DataFrame(results)
             df.write_csv(to_file_csv)
