@@ -39,6 +39,8 @@ def get_args() -> argparse.Namespace:
         args.tokens_in = [20, 100, 500]
     if args.dataset is None:
         args.dataset = ["wikipedia"]
+    if isinstance(args.dataset, str):
+        args.dataset = [args.dataset]
     return args
 
 
