@@ -27,7 +27,7 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--num-samples", type=int, default=1)
     parser.add_argument("--tokens-in", type=int, nargs="+", default=None)
     parser.add_argument("--n", type=int, default=1, help="only relevant when outputs are bytes")
-    parser.add_argument("--dataset", nargs="+", default=None)
+    parser.add_argument("--dataset", choices=["wikipedia", "gsm8k"], nargs="+", default=None, help="['wikipedia', 'gsm8k'] if None (default)")
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--num-tokens", type=int, default=1024)
 
@@ -38,7 +38,7 @@ def get_args() -> argparse.Namespace:
     if args.tokens_in is None:
         args.tokens_in = [20, 100, 500]
     if args.dataset is None:
-        args.dataset = ["wikipedia"]
+        args.dataset = ["wikipedia", "gsm8k"]
     if isinstance(args.dataset, str):
         args.dataset = [args.dataset]
     return args
@@ -88,27 +88,36 @@ def generate(
 
 def dataset_generator(
         enc: tiktoken.Encoding,
-        ds_name: Literal["wikipedia"] = "wikipedia",
+        ds_name: Literal["wikipedia", "gsm8k"] = "wikipedia",
         batch_size: int = 64,
         num_tokens: int = 1024,
 ) -> Generator[None, None, torch.Tensor]:
     if ds_name == "wikipedia":
         ds = load_dataset("wikimedia/wikipedia", "20231101.en", split="train")
         print(f"Loading Wikipedia dataset with {len(ds):_} samples")
-        buffer = []
-        tokens = []
-        for item in ds:
-            text = item["text"]
-            buffer.append(text)
-            if len(buffer) >= batch_size - len(tokens):
-                tokens = tokens + enc.encode_batch(buffer, disallowed_special=[])
-                tokens = [toks[:num_tokens] for toks in tokens if len(toks) >= num_tokens]
-                buffer = []
-            if len(tokens) >= batch_size:
-                yield torch.tensor(tokens[:batch_size], device="cuda", requires_grad=False)
-                tokens = []
+    elif ds_name == "gsm8k":
+        ds = load_dataset("openai/gsm8k", "main")
+        print(f"Loading GSM8K dataset with {len(ds):_} samples")
     else:
         raise NotImplementedError(f"Unknown dataset {ds_name}")
+
+    buffer = []
+    tokens = []
+    for item in ds:
+        if ds_name == "wikipedia":
+            text = item["text"]
+        elif ds_name == "gsm8k":
+            question = item["question"]
+            answer = item["answer"]
+            text = f"Question: {question}\n\nAnswer: {answer}"
+        buffer.append(text)
+        if len(buffer) >= batch_size - len(tokens):
+            tokens = tokens + enc.encode_batch(buffer, disallowed_special=[])
+            tokens = [toks[:num_tokens] for toks in tokens if len(toks) >= num_tokens]
+            buffer = []
+        if len(tokens) >= batch_size:
+            yield torch.tensor(tokens[:batch_size], device="cuda", requires_grad=False)
+            tokens = []
 
 
 def loss_pplx(
