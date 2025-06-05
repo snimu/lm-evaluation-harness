@@ -128,7 +128,7 @@ def loss_pplx(
         batch_size: int = 64,
         to_file_csv: str = "losses_pplxs.csv",
 ):
-    results = {"model": [], "dataset": [], "loss": [], "perplexity": []}
+    results = {"model": [], "dataset": [], "loss": [], "perplexity": [], "time": []}
     for model_name in model_names:
         print(model_name)
         model = MoTModel(model_name)
@@ -138,6 +138,7 @@ def loss_pplx(
             dataloader = dataset_generator(enc, ds_name, batch_size, num_tokens)
             losses = []
             loop = tqdm(dataloader, total=num_batches)
+            t0 = perf_counter()
             for batch_num, batch in enumerate(loop):
                 loss, _ = model.batch_loss_pplx(batch)
                 losses.append(loss)
@@ -145,13 +146,14 @@ def loss_pplx(
                     f"batch {batch_num}, "
                     f"loss={np.mean(losses):.4f}, "
                     f"pplx={(np.exp(np.mean(losses))):.4f}")
-
+            dT = perf_counter() - t0
             loss = np.mean(losses)
             pplx = np.exp(loss)
             results["model"].append(model_name)
             results["dataset"].append(ds_name)
             results["loss"].append(loss)
             results["pplx"].append(pplx)
+            results["time"].append(dT)
             print(f"{model_name} on {ds_name}: {loss=:.2f}, {pplx=:.2f}")
             df = pl.DataFrame(results)
             df.write_csv(to_file_csv)
