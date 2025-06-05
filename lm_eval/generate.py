@@ -96,7 +96,7 @@ def dataset_generator(
         ds = load_dataset("wikimedia/wikipedia", "20231101.en", split="train")
         print(f"Loading Wikipedia dataset with {len(ds):_} samples")
     elif ds_name == "gsm8k":
-        ds = load_dataset("openai/gsm8k", "main")
+        ds = load_dataset("openai/gsm8k", "main")["train"]
         print(f"Loading GSM8K dataset with {len(ds):_} samples")
     else:
         raise NotImplementedError(f"Unknown dataset {ds_name}")
@@ -152,7 +152,7 @@ def loss_pplx(
             results["model"].append(model_name)
             results["dataset"].append(ds_name)
             results["loss"].append(loss)
-            results["pplx"].append(pplx)
+            results["perplexity"].append(pplx)
             results["time"].append(dT)
             print(f"{model_name} on {ds_name}: {loss=:.2f}, {pplx=:.2f}")
             df = pl.DataFrame(results)
