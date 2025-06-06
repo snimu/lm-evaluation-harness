@@ -96,7 +96,7 @@ def dataset_generator(
         ds = load_dataset("wikimedia/wikipedia", "20231101.en", split="train")
         print(f"Loading Wikipedia dataset with {len(ds):_} samples")
     elif ds_name == "gsm8k":
-        ds = load_dataset("openai/gsm8k", "main")["train"]
+        ds = load_dataset("openai/gsm8k", "main")["main"]
         print(f"Loading GSM8K dataset with {len(ds):_} samples")
     else:
         raise NotImplementedError(f"Unknown dataset {ds_name}")
