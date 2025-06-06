@@ -27,7 +27,7 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--num-samples", type=int, default=1)
     parser.add_argument("--tokens-in", type=int, nargs="+", default=None)
     parser.add_argument("--n", type=int, default=1, help="only relevant when outputs are bytes")
-    parser.add_argument("--dataset", choices=["wikipedia", "gsm8k"], nargs="+", default=None, help="['wikipedia', 'gsm8k'] if None (default)")
+    parser.add_argument("--dataset", choices=["wikipedia", "gsm8k"], nargs="+", default="wikipedia", help="['wikipedia', 'gsm8k'] if None (default)")
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--num-tokens", type=int, default=1024)
 
